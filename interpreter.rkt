@@ -7,34 +7,46 @@
 ; interpreter - top level function called by the user
 (define interpreter
   (lambda (filename)
-    (statement-interpret (parser filename) (list '() '()))))
+    (program-interpret (parser filename) (list '() '()))))
 
+; program-interpret - interprets a list of program statements
+(define program-interpret
+  (lambda (lis state)
+    (if (null? lis)
+        state
+        (let ([newstate (statement-interpret (car lis) state)])
+          (program-interpret (cdr lis) newstate)))))
+
+; statement-interpret - interprets a single statement in a program list
 (define statement-interpret
   (lambda (lis state)
     (cond
-      [(null? lis) '()]
-      [(eq? (caar lis) 'var) (declare (car lis) state)]
-      [(eq? (caar lis) '=) (assign (car lis) state)]
-      ; [(eq? (caar lis) 'return) (return-interpret (cdar lis) state)]
-      ; [(eq? (caar lis) 'if) (if-interpret (cdar lis) state)]
-      ; [(eq? (caar lis) 'while) (while-interpret (cdar lis) state)]
-      [else (error 'interpreter "Undefined statement")])))
+      [(null? lis) (error 'statement-interpret "undefined statement")]
+      [(eq? (car lis) 'var) (declare lis state)]
+      [(eq? (car lis) '=) (assign lis state)]
+      ; [(eq? (car lis) 'return) (return-interpret lis state)]
+      [(eq? (car lis) 'if) (if-interpret lis state)]
+      ; [(eq? (car lis) 'while) (while-interpret lis state)]
+      [else (error 'interpreter "undefined statement")])))
 
 ; declare - interprets a variable declaration/initialization statement
 (define declare
   (lambda (stmt state)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
-      [(null? (cdr stmt)) (state-add (car stmt) 'novalue state)]
-      [(null? (cddr stmt)) (state-add (car stmt) (cadr stmt) state)])))
+      [(null? (cdr (var-name stmt))) (state-add (car (var-name stmt)) 'novalue state)]
+      [(null? (cdr (var-value stmt))) (state-add (car (var-name stmt)) (car (var-value stmt)) state)])))
 
 ; assign - interprets a variable assignment statement
 (define assign
   (lambda (stmt state)
     (if (null? stmt)
       (error 'assign-interpret "invalid assign statement")
-      (let ([state-temp (state-remove (cadr stmt) state)])
-        (state-add (cadr stmt) (M-value (caddr stmt) state) state-temp)))))
+      (let ([state-temp (state-remove (car (var-name stmt)) state)])
+        (state-add (car (var-name stmt)) (M-value (car (var-value stmt)) state) state-temp)))))
+
+(define var-name cdr)
+(define var-value cddr)
 
 ; if-interpret - interprets a single if-statement
 (define if-interpret
@@ -48,7 +60,7 @@
             [else (error 'if-interpret "invalid if statement")])))))
 
 (define condition cadr)
-(define statement cddr)
+(define statement caddr)
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
@@ -99,7 +111,10 @@
       [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))])))
+      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '&&) (and (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '||) (or (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '!) (not (M-value (left-operand expr) state))])))
 
 (define math-operator car)
 (define comp-operator car)
