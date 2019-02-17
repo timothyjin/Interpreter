@@ -13,20 +13,28 @@
   (lambda (lis state)
     (cond
       [(null? lis) '()]
-      ; [(eq? (caar lis) 'var) (declare-interpret (cdar lis) state)]
-      ; [(eq? (caar lis) '=) (assign-interpret (cdar lis) state)]
+      ; [(eq? (caar lis) 'var) (declare (cdar lis) state)]
+      ; [(eq? (caar lis) '=) (assign (cdar lis) state)]
       ; [(eq? (caar lis) 'return) (return-interpret (cdar lis) state)]
       ; [(eq? (caar lis) 'if) (if-interpret (cdar lis) state)]
       ; [(eq? (caar lis) 'while) (while-interpret (cdar lis) state)]
       [else (error 'interpreter "Undefined statement")])))
 
-(define declare-interpret
+; declare - interprets a variable declaration/initialization statement
+(define declare
   (lambda (stmt state)
     (cond
-      [(null? stmt) (error 'interpreter "Invalid declare statement")]
+      [(null? stmt) (error 'declare-interpret "invalid declare statement")]
       [(null? (cdr stmt)) (state-add (car stmt) 'novalue state)]
-      [(null? (cddr stmt)) (state-add (car stmt) (cadr stmt) state)]
-      [else (error 'declare-interpret "invalid declare statement")])))
+      [(null? (cddr stmt)) (state-add (car stmt) (cadr stmt) state)])))
+
+; assign - interprets a variable assignment statement
+(define assign
+  (lambda (stmt state)
+    (if (null? stmt)
+      (error 'assign-interpret "invalid assign statement")
+      (let ([state-temp (state-remove (cadr stmt) state)])
+        (state-add (cadr stmt) (M-value (caddr stmt) state) state-temp)))))
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
@@ -61,6 +69,7 @@
       [(eq? (car vars) name) (car vals)]
       [else (get name (cdr vars) (cdr vals))])))
 
+; M-value - returns the value of a arithmetic expression
 (define M-value
   (lambda (expr state)
     (cond
