@@ -7,7 +7,7 @@
 ; interpreter - top level function called by the user
 (define interpreter
   (lambda (filename)
-    (program-interpret (parser filename) (list '() '())))
+    (program-interpret (parser filename) (list '() '()))))
 
 (define program-interpret
   (lambda (lis state)
@@ -26,7 +26,7 @@
       [(null? stmt) (error 'interpreter "Invalid declare statement")]
       [(null? (cdr stmt)) (state-add (car stmt) 'novalue state)]
       [(null? (cddr stmt)) (state-add (car stmt) (cadr stmt) state)]
-      [else (error 'interpreter "Invalid declare statement")])))
+      [else (error 'declare-interpret "invalid declare statement")])))
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
@@ -42,6 +42,36 @@
 (define remove
   (lambda (name vars vals acc)
     (cond
-      [(null? vars) (error 'interpreter "Variable not found")]
+      [(null? vars) (error 'state-remove "variable not found")]
       [(eq? (car vars) name) (list (append (car acc) (cdr vars)) (append (cadr acc) (cdr vals)))]
       [else (remove name (cdr vars) (cdr vals) (list (append (car acc) (list (car vars))) (append (cadr acc) (list (car vals)))))])))
+
+; M-name - retrieve the value of the specified variable/value
+(define M-name
+  (lambda (name state)
+    (if (number? name)
+        name
+        (get name (car state) (cadr state)))))
+
+; get - helper function for M-name
+(define get
+  (lambda (name vars vals)
+    (cond
+      [(null? vars) (error 'M-value "variable not found")]
+      [(eq? (car vars) name) (car vals)]
+      [else (get name (cdr vars) (cdr vals))])))
+
+(define M-value
+  (lambda (expr state)
+    (cond
+      [(null? expr) (error 'M-value "undefined expression")]
+      [(number? expr) expr]
+      [(eq? (math-operator expr) '+) (+ (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
+      [(eq? (math-operator expr) '-) (- (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
+      [(eq? (math-operator expr) '*) (* (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
+      [(eq? (math-operator expr) '/) (quotient (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
+      [(eq? (math-operator expr) '%) (remainder (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))])))
+
+(define math-operator car)
+(define left-operand cadr)
+(define right-operand caddr)
