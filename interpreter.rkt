@@ -13,8 +13,8 @@
 (define program-interpret
   (lambda (lis state)
     (cond
-      [(null? lis) (error 'program-interpret "No return statement")]
       [(number? state) state]
+      [(null? lis) (error 'program-interpret "No return statement")]
       [else (let ([newstate (statement-interpret (car lis) state)])
               (program-interpret (cdr lis) newstate))])))
 
@@ -25,7 +25,7 @@
       [(null? lis) (error 'statement-interpret "undefined statement")]
       [(eq? (car lis) 'var) (declare lis state)]
       [(eq? (car lis) '=) (assign lis state)]
-      [(eq? (car lis) 'if) (if-interpret lis state)]
+      [(eq? (car lis) 'if) (if-else lis state)]
       ; [(eq? (car lis) 'while) (while-interpret lis state)]
       [(eq? (car lis) 'return) (return lis state)]
       [else (error 'statement-interpret "undefined statement")])))
@@ -56,19 +56,19 @@
 
 (define return-value cadr)
 
-; if-interpret - interprets a single if-statement
-(define if-interpret
+; if-else - interprets an if-else statement
+(define if-else
   (lambda (stmt state)
-    (if (null? stmt)
-        (error 'if-interpret "invalid if statement")
-        (let ([bool (M-value (condition stmt) state)])
-          (cond
-            [bool (statement-interpret (statement stmt) state)]
-            [(not bool) state]
-            [else (error 'if-interpret "invalid if statement")])))))
+    (let ([bool (M-value (condition stmt) state)])
+      (cond
+        [bool (statement-interpret (statement1 stmt) state)]
+        [(and (not bool) (null? (statement2 stmt))) state]
+        [(not bool) (statement-interpret (car (statement2 stmt)) state)]
+        [else (error 'if-interpret "invalid if statement")]))))
 
 (define condition cadr)
-(define statement caddr)
+(define statement1 caddr)
+(define statement2 cdddr)
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
