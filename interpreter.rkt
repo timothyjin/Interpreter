@@ -7,14 +7,14 @@
 ; interpreter - top level function called by the user
 (define interpreter
   (lambda (filename)
-    (program-interpret (parser filename) (list '() '()))))
+    (statement-interpret (parser filename) (list '() '()))))
 
-(define program-interpret
+(define statement-interpret
   (lambda (lis state)
     (cond
       [(null? lis) '()]
-      ; [(eq? (caar lis) 'var) (declare (cdar lis) state)]
-      ; [(eq? (caar lis) '=) (assign (cdar lis) state)]
+      [(eq? (caar lis) 'var) (declare (car lis) state)]
+      [(eq? (caar lis) '=) (assign (car lis) state)]
       ; [(eq? (caar lis) 'return) (return-interpret (cdar lis) state)]
       ; [(eq? (caar lis) 'if) (if-interpret (cdar lis) state)]
       ; [(eq? (caar lis) 'while) (while-interpret (cdar lis) state)]
@@ -35,6 +35,20 @@
       (error 'assign-interpret "invalid assign statement")
       (let ([state-temp (state-remove (cadr stmt) state)])
         (state-add (cadr stmt) (M-value (caddr stmt) state) state-temp)))))
+
+; if-interpret - interprets a single if-statement
+(define if-interpret
+  (lambda (stmt state)
+    (if (null? stmt)
+        (error 'if-interpret "invalid if statement")
+        (let ([bool (M-value (condition stmt) state)])
+          (cond
+            [bool (statement-interpret (statement stmt) state)]
+            [(not bool) state]
+            [else (error 'if-interpret "invalid if statement")])))))
+
+(define condition cadr)
+(define statement cddr)
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
@@ -57,7 +71,7 @@
 ; M-name - retrieve the value of the specified variable/value
 (define M-name
   (lambda (name state)
-    (if (number? name)
+    (if (or (number? name) (boolean? name))
         name
         (get name (car state) (cadr state)))))
 
@@ -65,7 +79,7 @@
 (define get
   (lambda (name vars vals)
     (cond
-      [(null? vars) (error 'M-value "variable not found")]
+      [(null? vars) (error 'M-name "variable not found")]
       [(eq? (car vars) name) (car vals)]
       [else (get name (cdr vars) (cdr vals))])))
 
@@ -74,13 +88,20 @@
   (lambda (expr state)
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
-      [(number? expr) expr]
-      [(eq? (math-operator expr) '+) (+ (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
-      [(eq? (math-operator expr) '-) (- (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
-      [(eq? (math-operator expr) '*) (* (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
-      [(eq? (math-operator expr) '/) (quotient (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))]
-      [(eq? (math-operator expr) '%) (remainder (M-value (M-name (left-operand expr) state) state) (M-value (M-name (right-operand expr) state) state))])))
+      [(not (list? expr)) (M-name expr state)]
+      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state)))]
+      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
+      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))])))
 
 (define math-operator car)
+(define comp-operator car)
 (define left-operand cadr)
 (define right-operand caddr)
