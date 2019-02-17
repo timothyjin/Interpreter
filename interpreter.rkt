@@ -12,10 +12,11 @@
 ; program-interpret - interprets a list of program statements
 (define program-interpret
   (lambda (lis state)
-    (if (null? lis)
-        state
-        (let ([newstate (statement-interpret (car lis) state)])
-          (program-interpret (cdr lis) newstate)))))
+    (cond
+      [(null? lis) (error 'program-interpret "No return statement")]
+      [(number? state) state]
+      [else (let ([newstate (statement-interpret (car lis) state)])
+              (program-interpret (cdr lis) newstate))])))
 
 ; statement-interpret - interprets a single statement in a program list
 (define statement-interpret
@@ -24,10 +25,10 @@
       [(null? lis) (error 'statement-interpret "undefined statement")]
       [(eq? (car lis) 'var) (declare lis state)]
       [(eq? (car lis) '=) (assign lis state)]
-      ; [(eq? (car lis) 'return) (return-interpret lis state)]
       [(eq? (car lis) 'if) (if-interpret lis state)]
       ; [(eq? (car lis) 'while) (while-interpret lis state)]
-      [else (error 'interpreter "undefined statement")])))
+      [(eq? (car lis) 'return) (return lis state)]
+      [else (error 'statement-interpret "undefined statement")])))
 
 ; declare - interprets a variable declaration/initialization statement
 (define declare
@@ -47,6 +48,13 @@
 
 (define var-name cdr)
 (define var-value cddr)
+
+; return - interprets a return statement
+(define return
+  (lambda (stmt state)
+    (M-name (return-value stmt) state)))
+
+(define return-value cadr)
 
 ; if-interpret - interprets a single if-statement
 (define if-interpret
