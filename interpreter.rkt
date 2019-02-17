@@ -7,7 +7,9 @@
 ; interpreter - top level function called by the user
 (define interpreter
   (lambda (filename)
-    (program-interpret (parser filename) (list '() '()))))
+    (program-interpret (parser filename) empty-state)))
+
+(define empty-state (list '() '()))
 
 ; program-interpret - interprets a list of program statements
 (define program-interpret
@@ -15,20 +17,25 @@
     (cond
       [(number? state) state]
       [(null? lis) (error 'program-interpret "No return statement")]
-      [else (let ([newstate (statement-interpret (car lis) state)])
-              (program-interpret (cdr lis) newstate))])))
+      [else (let ([newstate (M-state (first-stmt lis) state)])
+              (program-interpret (next-stmts lis) newstate))])))
 
-; statement-interpret - interprets a single statement in a program list
-(define statement-interpret
+(define first-stmt car)
+(define next-stmts cdr)
+
+; M-state - changes the program state with a single statement in a program list
+(define M-state
   (lambda (lis state)
     (cond
-      [(null? lis) (error 'statement-interpret "undefined statement")]
-      [(eq? (car lis) 'var) (declare lis state)]
-      [(eq? (car lis) '=) (assign lis state)]
-      [(eq? (car lis) 'if) (if-else lis state)]
-      ; [(eq? (car lis) 'while) (while-interpret lis state)]
-      [(eq? (car lis) 'return) (return lis state)]
-      [else (error 'statement-interpret "undefined statement")])))
+      [(null? lis) (error 'M-state "undefined statement")]
+      [(eq? (stmt-type lis) 'var) (declare lis state)]
+      [(eq? (stmt-type lis) '=) (assign lis state)]
+      [(eq? (stmt-type lis) 'if) (if-else lis state)]
+      ; [(eq? (stmt-type lis) 'while) (while-interpret lis state)]
+      [(eq? (stmt-type lis) 'return) (return lis state)]
+      [else (error 'M-state "undefined statement")])))
+
+(define stmt-type car)
 
 ; declare - interprets a variable declaration/initialization statement
 (define declare
@@ -61,14 +68,16 @@
   (lambda (stmt state)
     (let ([bool (M-value (condition stmt) state)])
       (cond
-        [bool (statement-interpret (statement1 stmt) state)]
+        [bool (M-state (statement1 stmt) state)]
         [(and (not bool) (null? (statement2 stmt))) state]
-        [(not bool) (statement-interpret (car (statement2 stmt)) state)]
+        [(not bool) (M-state (car (statement2 stmt)) state)]
         [else (error 'if-interpret "invalid if statement")]))))
 
 (define condition cadr)
 (define statement1 caddr)
 (define statement2 cdddr)
+
+;;;;; These functions need more abstraction ;;;;;
 
 ; state-add - add the specified variable and its value to the program state
 (define state-add
@@ -78,7 +87,7 @@
 ; state-remove - remove the specified variable and its value from the program state
 (define state-remove
   (lambda (name state)
-    (remove name (car state) (cadr state) (list '() '()))))
+    (remove name (car state) (cadr state) empty-state)))
 
 ; remove - helper function for state-remove using an accumulator
 (define remove
