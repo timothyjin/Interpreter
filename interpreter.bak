@@ -1,11 +1,33 @@
 #lang racket
 
+<<<<<<< HEAD
+(define M_state
+  (lambda (variable value state)
+    (
+
+(define interpret
+  (lambda (lis, state)
+    (cond
+      [(null? lis) state]
+      [(eq? (caar lis) 'var) (declare (car lis))]
+      [(eq? (caar lis) '=) (assign (car lis))]
+      [(eq? (caar lis) 'return) (return (car lis))]
+      [(eq? (caar lis) 'if) (evaluate-if (car lis))]
+      [(eq? (caar lis) 'while) (evaluate-while (car lis))])))
+
+(define declare
+  (lambda (exp)
+    
+                          
+                         
+    
+=======
 (provide (all-defined-out))
 
 (require "simpleParser.rkt")
 
-; interpret - top level function called by the user
-(define interpret
+; interpreter - top level function called by the user
+(define interpreter
   (lambda (filename)
     (program-interpret (parser filename) empty-state)))
 
@@ -16,7 +38,6 @@
   (lambda (lis state)
     (cond
       [(number? state) state]
-      [(not (eq? (M-name 'return state) 'novalue)) (M-name 'return state)]
       [(null? lis) (error 'program-interpret "No return statement")]
       [else (let ([newstate (M-state (first-stmt lis) state)])
               (program-interpret (next-stmts lis) newstate))])))
@@ -32,7 +53,7 @@
       [(eq? (stmt-type lis) 'var) (declare lis state)]
       [(eq? (stmt-type lis) '=) (assign lis state)]
       [(eq? (stmt-type lis) 'if) (if-else lis state)]
-      [(eq? (stmt-type lis) 'while) (while-interpret lis state)]
+      ; [(eq? (stmt-type lis) 'while) (while-interpret lis state)]
       [(eq? (stmt-type lis) 'return) (return lis state)]
       [else (error 'M-state "undefined statement")])))
 
@@ -43,17 +64,8 @@
   (lambda (stmt state)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
-      [(isDeclared? (car (var-name stmt)) (car state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
-      [(null? (var-value stmt)) (state-add (car (var-name stmt)) 'novalue state)]
-      [else (state-add (car (var-name stmt)) (M-value (car (var-value stmt)) state) state)])))
-
-;;Helper function to check if a variable is previously declared. Address issue of redefining variable
-(define isDeclared?
-  (lambda (var-name vars-list)
-    (cond
-      [(null? vars-list) #f]
-      [(eq? var-name (car vars-list)) #t]
-      [else (isDeclared? var-name (cdr vars-list))])))
+      [(null? (cdr (var-name stmt))) (state-add (car (var-name stmt)) 'novalue state)]
+      [(null? (cdr (var-value stmt))) (state-add (car (var-name stmt)) (car (var-value stmt)) state)])))
 
 ; assign - interprets a variable assignment statement
 (define assign
@@ -69,7 +81,7 @@
 ; return - interprets a return statement
 (define return
   (lambda (stmt state)
-    (state-add 'return (M-value (return-value stmt) state) state)))
+    (M-name (return-value stmt) state)))
 
 (define return-value cadr)
 
@@ -78,22 +90,15 @@
   (lambda (stmt state)
     (let ([bool (M-value (condition stmt) state)])
       (cond
-        [bool (M-state (statement stmt) state)]
-        [(null? (else-statement stmt)) state]
-        [else (M-state (car (else-statement stmt)) state)]))))
-
-;;while-interpret: interprets a while statement
-(define while-interpret
-  (lambda (stmt state)
-    (let ([bool (M-value (condition stmt) state)])
-      (if bool
-          (while-interpret stmt (M-state (statement stmt) state))
-          state))))
-
+        [bool (M-state (statement1 stmt) state)]
+        [(and (not bool) (null? (statement2 stmt))) state]
+        [(not bool) (M-state (car (statement2 stmt)) state)]
+        [else (error 'if-interpret "invalid if statement")]))))
 
 (define condition cadr)
-(define statement caddr)
-(define else-statement cdddr)
+(define statement1 caddr)
+(define statement2 cdddr)
+
 ;;;;; These functions need more abstraction ;;;;;
 
 ; state-add - add the specified variable and its value to the program state
@@ -117,19 +122,15 @@
 ; M-name - retrieve the value of the specified variable/value
 (define M-name
   (lambda (name state)
-    (cond
-      [(number? name) name]
-      [(eq? name 'true) #t]
-      [(eq? name 'false) #f]
-      [else(get name (car state) (cadr state))])))
+    (if (or (number? name) (boolean? name))
+        name
+        (get name (car state) (cadr state)))))
 
 ; get - helper function for M-name
 (define get
   (lambda (name vars vals)
     (cond
-      [(and (null? vars) (eq? name 'return)) 'novalue]
       [(null? vars) (error 'M-name "variable not found")]
-      [(and (eq? (car vars) name) (eq? (car vals) 'novalue)) (error 'M-name "Variable not assigned with value")]
       [(eq? (car vars) name) (car vals)]
       [else (get name (cdr vars) (cdr vals))])))
 
@@ -140,7 +141,6 @@
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(and (eq? (math-operator expr) '-) (isRightOperandNull? expr)) (* -1 (M-value (left-operand expr) state))]  ;Address negative sign
       [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
@@ -159,6 +159,4 @@
 (define comp-operator car)
 (define left-operand cadr)
 (define right-operand caddr)
-(define isRightOperandNull?
-  (lambda (expr)
-    (null? (cddr expr))))
+>>>>>>> tcj/part1
