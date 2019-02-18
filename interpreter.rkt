@@ -34,7 +34,7 @@
       [(eq? (stmt-type lis) 'if) (if-else lis state)]
       [(eq? (stmt-type lis) 'while) (while-interpret lis state)]
       [(eq? (stmt-type lis) 'return) (return lis state)]
-      [else (M-state (cdr lis) (M-state (car lis ) state))])))
+      [else (M-state (next-stmts lis) (M-state (stmt-type lis) state))])))
 
 (define stmt-type car)
 
