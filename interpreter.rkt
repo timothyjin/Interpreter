@@ -145,7 +145,7 @@
       [(number? name) name]
       [(eq? name 'true) #t]
       [(eq? name 'false) #f]
-      [else(get name (car state) (cadr state))])))
+      [else(get name (get-vars-list state) (get-val-list state))])))
 
 ; get - helper function for M-name
 (define get
