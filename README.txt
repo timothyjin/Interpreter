@@ -16,3 +16,17 @@ Things to do:
 1. Should not use "LET"
 2. Should return true/false instead of #t/#f
 3. Better abstraction for add and remove?
+
+
+Changes from branch Kai
+Abstraction:
+Changed (define var-name cdr) to (define var-name cadr)
+Changed var-name-c to isDeclared to differentiate from (define var-name cadr)
+Added (define get-vars-list car) and (define get-val-list cadr) for stat
+- couple other changes to abstraction
+fixed return of true/false
+removed let
+Worked on doing the extra challenge part, got everything to work but test 25. 
+
+^Can't seem to get the right x value without affecting other tests for this.
+Have a problem with too many (M-state (___ stmt) state) terms. This is mainly due to retrieving the state upon side effects. 
