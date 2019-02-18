@@ -43,7 +43,7 @@
   (lambda (stmt state)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
-      [(isDeclared? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
+      [(is-declared? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
       [(null? (cddr stmt)) (state-add (var-name stmt) 'novalue state)]
       [else (state-add (var-name stmt)
                        (M-value (var-value stmt) (M-state (var-value stmt) state))
@@ -51,12 +51,12 @@
 
 
 ;;Helper function to check if a variable is previously declared. Address issue of redefining variable
-(define isDeclared?
+(define is-declared?
   (lambda (var-name-c vars-list)
     (cond
       [(null? vars-list) #f]
       [(eq? var-name-c (car vars-list)) #t]
-      [else (isDeclared? var-name-c (cdr vars-list))])))
+      [else (is-declared? var-name-c (cdr vars-list))])))
 
 ; assign-state - interprets a variable assignment statement
 (define assign-state
@@ -167,7 +167,7 @@
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (assign-value expr state)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(and (eq? (math-operator expr) '-) (isRightOperandNull? expr)) (* -1 (M-value (left-operand expr) state))]  ;Address negative sign
+      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state))]  ;Address negative sign
       [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
       [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
@@ -186,6 +186,6 @@
 (define comp-operator car)
 (define left-operand cadr)
 (define right-operand caddr)
-(define isRightOperandNull?
+(define is-right-operand-null?
   (lambda (expr)
     (null? (cddr expr))))
