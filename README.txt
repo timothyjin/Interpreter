@@ -30,3 +30,13 @@ Worked on doing the extra challenge part, got everything to work but test 25.
 
 ^Can't seem to get the right x value without affecting other tests for this.
 Have a problem with too many (M-state (___ stmt) state) terms. This is mainly due to retrieving the state upon side effects. 
+
+---------------------------------------------------------------------------------------------------
+
+03/03/2019
+Starting interpreter 2.
+Polish up the previous code, delete multiple "assign" statement. Modification in M-value methods. All side effects accomplished. Ready for interpreter 2.
+
+
+
+

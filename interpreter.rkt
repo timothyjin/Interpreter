@@ -30,7 +30,7 @@
       [(null? lis) state]
       [(not (list? lis)) state]
       [(eq? (stmt-type lis) 'var) (declare lis state)]
-      [(eq? (stmt-type lis) '=) (assign-state lis state)]
+      [(eq? (stmt-type lis) '=) (assign lis state)]
       [(eq? (stmt-type lis) 'if) (if-else lis state)]
       [(eq? (stmt-type lis) 'while) (while-interpret lis state)]
       [(eq? (stmt-type lis) 'return) (return lis state)]
@@ -46,7 +46,7 @@
       [(is-declared? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
       [(null? (cddr stmt)) (state-add (var-name stmt) 'novalue state)]
       [else (state-add (var-name stmt)
-                       (M-value (var-value stmt) (M-state (var-value stmt) state))
+                       (M-value (var-value stmt) state)
                        (M-state (var-value stmt) state))])))
 
 
@@ -58,36 +58,18 @@
       [(eq? var-name-c (car vars-list)) #t]
       [else (is-declared? var-name-c (cdr vars-list))])))
 
-; assign-state - interprets a variable assignment statement
-(define assign-state
-  (lambda (stmt state)
-    (if (null? stmt)
-      (error 'assign-interpret "invalid assign statement")
-      (get-state-assign (assign stmt state)))))
-
-
-
-; assign-value - interpretes the value of an assignment statement (does not save state)
-(define assign-value
-  (lambda (stmt state)
-    (if (null? stmt)
-      (error 'assign-interpret "invalid assign statement")
-      (get-value-assign (assign stmt state)))))
 
 ; assign - uses version of assign which returns a value and state
 (define assign
   (lambda (stmt state)
     (if (null? stmt)
       (error 'assign-interpret "invalid assign statement")
-      (list (state-add (var-name stmt)
-                 (M-value (var-value stmt) (M-state (var-value stmt) state))
-                 (state-remove (var-name stmt) (M-state (var-value stmt) state)))
-           (M-value (var-value stmt) (M-state (var-value stmt) state))))))
+      (state-add (var-name stmt)
+                 (M-value (var-value stmt) state)
+                 (state-remove (var-name stmt) (M-state (var-value stmt) state))))))
 
 (define var-name cadr)
 (define var-value caddr)
-(define get-value-assign cadr)
-(define get-state-assign car)
 
 ; return - interprets a return statement
 (define return
@@ -165,22 +147,22 @@
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
-      [(eq? (math-operator expr) '=) (assign-value expr state)]
-      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state))]  ;Address negative sign
-      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state)))]
-      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '&&) (and (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '||) (or (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '!) (not (M-value (left-operand expr) state))])))
+      [(eq? (math-operator expr) '=) (M-value (var-value expr) state)]
+      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) (M-state (left-operand expr) state)))]  ;Address negative sign
+      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state))))]
+      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '&&) (and (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '||) (or (M-value (left-operand expr) state) (M-value (right-operand expr) (M-state (left-operand expr) state)))]
+      [(eq? (comp-operator expr) '!) (not (M-value (left-operand expr) (M-state (left-operand expr) state)))])))
 
 (define math-operator car)
 (define comp-operator car)
