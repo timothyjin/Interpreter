@@ -8,30 +8,53 @@
 (define interpret
   (lambda (filename)
     (call/cc (lambda (return)
-       (M-state (parser filename) empty-state return (lambda (state) (error 'break error "invalid break")) (lambda (state) (error 'continue error "invalid continue")))))))
+       (M-state (parser filename) empty-state return (lambda (state) (error 'break "invalid break")) (lambda (state) (error 'continue "invalid continue")) (lambda (state) (error 'throw "invalid throw")))))))
 
 (define empty-state (list '() '()))
 
 ; M-state - changes the program state with a single statement in a program list
 (define M-state
-  (lambda (lis state return break continue)
+  (lambda (lis state return break continue throw)
     (cond
       [(null? lis) state]
       [(not (list? lis)) state]
-      [(eq? (stmt-type lis) 'var) (declare lis state return break continue)]
-      [(eq? (stmt-type lis) '=) (assign lis state state return break continue)]
-      [(eq? (stmt-type lis) 'if) (if-else lis state return break continue)]
-      [(eq? (stmt-type lis) 'while) (call/cc (lambda (break) (while-interpret lis state return break continue)))]
+      [(eq? (stmt-type lis) 'var) (declare lis state return break continue throw)]
+      [(eq? (stmt-type lis) '=) (assign lis state state return break continue throw)]
+      [(eq? (stmt-type lis) 'if) (if-else lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'while) (call/cc (lambda (break) (while-interpret lis state return break continue throw)))]
       [(eq? (stmt-type lis) 'return) (return (M-value (return-value lis) state))]
-      [(eq? (stmt-type lis) 'begin) (remove-top-layer (M-state (cdr lis) (add-layer state) return break continue))]
-      [(eq? (stmt-type lis) 'break)    (break state)]
-      [(eq? (stmt-type lis) 'continue) (continue state)]
-      [else (M-state (next-stmts lis) (M-state (first-stmt lis) state return break continue) return break continue)])))
+      [(eq? (stmt-type lis) 'begin) (remove-top-layer (M-state (cdr lis) (add-layer state) return break continue throw))]
+      [(eq? (stmt-type lis) 'break)    (break (remove-top-layer state))]
+      [(eq? (stmt-type lis) 'continue) (continue(remove-top-layer state))]
+      [(eq? (stmt-type lis) 'try)   (M-state (finally-phrase lis) (M-state (catch-phrase lis) (call/cc (lambda (throw) (M-state (body-phrase lis) state return break continue throw))) return break continue throw) return break continue throw)]
+      [(eq? (stmt-type lis) 'catch) (catch lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'finally) (finally lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'throw)   (throw (cons (list 'error) (cons (list (return-value lis)) state)))]
+      [else (M-state (next-stmts lis) (M-state (first-stmt lis) state return break continue throw) return break continue throw)])))
 
 (define stmt-type car)
 (define first-stmt car)
 (define next-stmts cdr)
 (define return-value cadr)
+
+(define finally-phrase cadddr)
+(define body-phrase cadr)
+(define catch-phrase caddr)
+
+;;catch function to deal with catch clause
+(define catch
+  (lambda (stmt state return break continue throw)
+    (cond
+      [(null? state) state]
+      [(null? (get-vars-list state)) state]
+      [(eq? (car (get-vars-list state)) 'error)        (M-state (caddr stmt) (cons (cadr stmt) (cdr state)) return break continue throw)]
+      [else state])))
+;;finally function to deal with catch clause
+(define finally
+  (lambda (stmt state return break continue throw)
+    (if (null? stmt)
+        state
+        (M-state (cadr stmt) state return break continue throw))))
 
 ;;helper function to deal with adding and deleting layer
 (define add-layer
@@ -44,14 +67,14 @@
 ; declare - interprets a variable declaration/initialization statement
 ; declare adds the variable only to the first layer
 (define declare
-  (lambda (stmt state return break continue)
+  (lambda (stmt state return break continue throw)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
       [(is-declared? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
       [(null? (cddr stmt)) (append (state-add (var-name stmt) 'novalue state) (next-layer state))]
       [else (append (state-add (var-name stmt)
                        (M-value (var-value stmt) state)
-                       (M-state (var-value stmt) state return break continue)) (next-layer state))])))
+                       (M-state (var-value stmt) state return break continue throw)) (next-layer state))])))
 
 
 ;;Helper function to check if a variable is previously declared. Address issue of redefining variable
@@ -66,15 +89,15 @@
 ;; assign - uses version of assign which returns a value and state
 ;; Has to first find which layer the variable is in, so it recursively goes through layers and look for it
 (define assign
-  (lambda (stmt state original-state return break continue)
+  (lambda (stmt state original-state return break continue throw)
     (cond
       [(null? stmt) (error 'assign-interpret "invalid assign statement")]
       [(null? state) (error 'assign-error "variable not found, using before declaring")]
       [(contain-var? (var-name stmt) (get-vars-list state))
       (append (state-add (var-name stmt)
                  (M-value (var-value stmt) original-state)
-                 (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue))) (next-layer state))]
-      [else (cons (get-vars-list state) (cons (get-val-list state) (assign stmt (next-layer state) original-state return break continue)))])))
+                 (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue throw))) (next-layer state))]
+      [else (cons (get-vars-list state) (cons (get-val-list state) (assign stmt (next-layer state) original-state return break continue throw)))])))
 
 (define var-name cadr)
 (define var-value caddr)
@@ -88,18 +111,18 @@
       [else (contain-var? var (cdr lis))])))
 ; if-else - interprets an if-else statement
 (define if-else
-  (lambda (stmt state return break continue)
+  (lambda (stmt state return break continue throw)
       (cond
-        [(M-value (condition stmt) state) (M-state (statement stmt) (M-state (condition stmt) state return break continue) return break continue)]
-        [(null? (else-statement stmt)) (M-state (condition stmt) state return break continue)]
-        [else (M-state (car (else-statement stmt)) (M-state (condition stmt) state return break continue) return break continue)])))
+        [(M-value (condition stmt) state) (M-state (statement stmt) (M-state (condition stmt) state return break continue throw) return break continue throw)]
+        [(null? (else-statement stmt)) (M-state (condition stmt) state return break continue throw)]
+        [else (M-state (car (else-statement stmt)) (M-state (condition stmt) state return break continue throw) return break continue throw)])))
 
 ;;while-interpret: interprets a while statement
 (define while-interpret
-  (lambda (stmt state return break continue)
+  (lambda (stmt state return break continue throw)
        (if (M-value (condition stmt) state)
-          (while-interpret stmt (call/cc (lambda (continue) (M-state (statement stmt) (M-state (condition stmt) state return break continue) return break continue))) return break continue)
-          (M-state (condition stmt) state return break continue))))
+          (while-interpret stmt (call/cc (lambda (continue) (M-state (statement stmt) (M-state (condition stmt) state return break continue throw) return break continue throw))) return break continue throw)
+          (M-state (condition stmt) state return break continue throw))))
 
 
 (define condition cadr)
