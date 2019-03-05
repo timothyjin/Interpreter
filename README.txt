@@ -46,3 +46,9 @@ continue added.
 Test 1-10 passed.
 However, break and continue has an error problem, also when continues and breaks the state does not pop top layer.
 
+03/05/2019 (Changes on branch tcj/part2 from master)
+Changed the representation of the state so that each scope has its bindings in its own list.
+For example:
+    ((a b c) (1 2 3) (x y z) (4 5 6)) -> (((a b c) (1 2 3)) ((x y z) (4 5 6)))
+Functions state-add and state-remove were edited accordingly with this change.
+Functions declare and assign were also edited and are fully functional with this change (hopefully).

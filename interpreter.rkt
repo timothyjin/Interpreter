@@ -84,8 +84,8 @@
        (error 'assign-error "variable not found, using before declaring")]
       [(contain-var? (var-name stmt) (get-vars-list state))
        (state-add (var-name stmt)
-         (M-value (var-value stmt) original-state)
-         (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue)))
+                  (M-value (var-value stmt) original-state)
+                  (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue)))]
       [else
        (cons (top-layer state) (assign stmt (next-layer state) original-state return break continue))])))
 
