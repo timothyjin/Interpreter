@@ -48,7 +48,7 @@
   (lambda (stmt state return break continue)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
-      [(var-in-scope? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
+      [(var-in-scope? (var-name stmt) (get-vars-list state)) (error 'declare-interpret "Redefining variable error, variable previously declared")]
       [(null? (cddr stmt)) (state-add (var-name stmt) 'novalue state)]
       [else (state-add (var-name stmt)
                        (M-value (var-value stmt) state)
@@ -65,6 +65,7 @@
       [else (is-declared? name (next-layer state))])))
 
 ;; var-in-scope? - returns true if the given variable name is declared in the given scope, otherwise false
+;; [same as contain-var?]
 (define var-in-scope?
   (lambda (name scope)
     (cond
@@ -77,18 +78,22 @@
 (define assign
   (lambda (stmt state original-state return break continue)
     (cond
-      [(null? stmt) (error 'assign-interpret "invalid assign statement")]
-      [(null? state) (error 'assign-error "variable not found, using before declaring")]
+      [(null? stmt)
+       (error 'assign-interpret "invalid assign statement")]
+      [(null? state)
+       (error 'assign-error "variable not found, using before declaring")]
       [(contain-var? (var-name stmt) (get-vars-list state))
-      (append (state-add (var-name stmt)
-                 (M-value (var-value stmt) original-state)
-                 (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue))) (next-layer state))]
-      [else (cons (get-vars-list state) (cons (get-val-list state) (assign stmt (next-layer state) original-state return break continue)))])))
+       (state-add (var-name stmt)
+         (M-value (var-value stmt) original-state)
+         (state-remove (var-name stmt) (M-state (var-value stmt) state return break continue)))
+      [else
+       (cons (top-layer state) (assign stmt (next-layer state) original-state return break continue))])))
 
 (define var-name cadr)
 (define var-value caddr)
 
 ;;helper function to see if a list contains the variable
+;; [same as var-in-scope?]
 (define contain-var?
   (lambda (var lis)
     (cond
@@ -118,8 +123,10 @@
 ;; state-add - add the specified variable and its value to the topmost layer of the program state
 (define state-add
   (lambda (name value state)
-    (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value)))
-          (next-layer state))))
+    (if (null? (next-layer state))
+        (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value))))
+        (cons (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value)))
+              (next-layer state)))))
 
 (define get-val-list cadar)
 (define get-vars-list caar)
