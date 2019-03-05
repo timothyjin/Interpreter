@@ -38,5 +38,11 @@ Starting interpreter 2.
 Polish up the previous code, delete multiple "assign" statement. Modification in M-value methods. All side effects accomplished. Ready for interpreter 2.
 
 
-
+03/05/2019
+Use call/cc instead of cps. (Do not know how to)
+Return added,
+break added,
+continue added.
+Test 1-10 passed.
+However, break and continue has an error problem, also when continues and breaks the state does not pop top layer.
 
