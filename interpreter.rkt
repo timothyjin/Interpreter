@@ -4,15 +4,15 @@
 
 (require "simpleParser.rkt")
 
-; interpret - top level function called by the user
+;; interpret - top level function called by the user
 (define interpret
   (lambda (filename)
-    (call/cc (lambda (return)
-       (M-state (parser filename) empty-state return (lambda (state) (error 'break error "invalid break")) (lambda (state) (error 'continue error "invalid continue")))))))
+    (call/cc (lambda (cc)
+       (M-state (parser filename) empty-state cc (lambda (state) (error 'break error "invalid break")) (lambda (state) (error 'continue error "invalid continue")))))))
 
 (define empty-state (list '() '()))
 
-; M-state - changes the program state with a single statement in a program list
+;; M-state - changes the program state with a single statement in a program list
 (define M-state
   (lambda (lis state return break continue)
     (cond
@@ -33,35 +33,44 @@
 (define next-stmts cdr)
 (define return-value cadr)
 
-;;helper function to deal with adding and deleting layer
+;; add-layer - pushes an empty state onto the state list to represent a new program scope
 (define add-layer
   (lambda (state)
-    (cons '() (cons '() state))))
+    (cons empty-state (list state))))
 
+;; remove-top-layer - pops the topmost state off of the state list
 (define remove-top-layer
   (lambda (state)
-    (cddr state)))
-; declare - interprets a variable declaration/initialization statement
-; declare adds the variable only to the first layer
+    (next-layer state)))
+
+;; declare - interprets a variable declaration/initialization statement, adds the variable to the top state layer
 (define declare
   (lambda (stmt state return break continue)
     (cond
       [(null? stmt) (error 'declare-interpret "invalid declare statement")]
-      [(is-declared? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
-      [(null? (cddr stmt)) (append (state-add (var-name stmt) 'novalue state) (next-layer state))]
-      [else (append (state-add (var-name stmt)
+      [(var-in-scope? (var-name stmt) (get-vars-list state)) (error 'declare-intrepret "Redefining variable error, variable previously declared")]
+      [(null? (cddr stmt)) (state-add (var-name stmt) 'novalue state)]
+      [else (state-add (var-name stmt)
                        (M-value (var-value stmt) state)
-                       (M-state (var-value stmt) state return break continue)) (next-layer state))])))
+                       (M-state (var-value stmt) state return break continue))])))
 
+(define top-layer car)
 
-;;Helper function to check if a variable is previously declared. Address issue of redefining variable
+;; is-declared? - returns true if the given variable name has been declared in the current scope, otherwise false
 (define is-declared?
-  (lambda (var-name-c vars-list)
+  (lambda (name state)
     (cond
-      [(null? vars-list) #f]
-      [(eq? var-name-c (car vars-list)) #t]
-      [else (is-declared? var-name-c (cdr vars-list))])))
+      [(null? state) #f]
+      [(var-in-scope? name (get-vars-list state)) #t]
+      [else (is-declared? name (next-layer state))])))
 
+;; var-in-scope? - returns true if the given variable name is declared in the given scope, otherwise false
+(define var-in-scope?
+  (lambda (name scope)
+    (cond
+      [(null? scope) #f]
+      [(eq? name (car scope)) #t]
+      [else (var-in-scope? name (cdr scope))])))
 
 ;; assign - uses version of assign which returns a value and state
 ;; Has to first find which layer the variable is in, so it recursively goes through layers and look for it
@@ -86,6 +95,7 @@
       [(null? lis) #f]
       [(eq? (car lis) var) #t]
       [else (contain-var? var (cdr lis))])))
+
 ; if-else - interprets an if-else statement
 (define if-else
   (lambda (stmt state return break continue)
@@ -101,31 +111,35 @@
           (while-interpret stmt (call/cc (lambda (continue) (M-state (statement stmt) (M-state (condition stmt) state return break continue) return break continue))) return break continue)
           (M-state (condition stmt) state return break continue))))
 
-
 (define condition cadr)
 (define statement caddr)
 (define else-statement cdddr)
 
-; state-add - add the specified variable and its value to the program state
+;; state-add - add the specified variable and its value to the topmost layer of the program state
 (define state-add
   (lambda (name value state)
-    (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value)))))
+    (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value)))
+          (next-layer state))))
 
-(define get-val-list cadr)
-(define get-vars-list car)
-(define next-layer cddr)
-; state-remove - remove the specified variable and its value from the program state
+(define get-val-list cadar)
+(define get-vars-list caar)
+(define next-layer cdr)
+
+;; state-remove - remove the specified variable and its value from the topmost layer in which it appears in the program state
 (define state-remove
   (lambda (name state)
-    (remove name (get-vars-list state) (get-val-list state) empty-state)))
+    (cond
+      [(null? state) (error 'state-remove "variable not found, using before declaring")]
+      [(var-in-scope? name (caar state)) (cons (remove name (get-vars-list state) (get-val-list state) empty-state) (cdr state))]
+      [else (cons (car state) (state-remove name (cdr state)))])))
 
-; remove - helper function for state-remove using an accumulator
+;; remove - helper function for state-remove using an accumulator
 (define remove
   (lambda (name vars vals acc)
     (cond
-      [(null? vars) (error 'state-remove "variable not found, using before declaring")]
-      [(eq? (car vars) name) (list (append (get-vars-list acc) (cdr vars)) (append (get-val-list acc) (cdr vals)))]
-      [else (remove name (cdr vars) (cdr vals) (list (append (get-vars-list acc) (list (car vars))) (append (get-val-list acc) (list (car vals)))))])))
+      [(null? vars) acc]
+      [(eq? (car vars) name) (list (append (car acc) (cdr vars)) (append (cadr acc) (cdr vals)))]
+      [else (remove name (cdr vars) (cdr vals) (list (append (car acc) (list (car vars))) (append (cadr acc) (list (car vals)))))])))
 
 ; M-name - retrieve the value of the specified variable/value
 ; Has to recursively look for variable through state layers
