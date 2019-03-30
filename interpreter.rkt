@@ -41,7 +41,7 @@
                                                 return break continue throw)]
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'throw)    (throw (cons (list (list 'error) (list (return-value lis))) state))]
+      [(eq? (stmt-type lis) 'throw)    (throw (cons (list (list 'error) (list (box (return-value lis)))) state))]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
@@ -116,10 +116,11 @@
       [(null? state)
        (error 'assign-error "variable not found, using before declaring")]
       [(var-in-scope? (var-name stmt) (get-vars-list state))
-       (state-add (var-name stmt)
-                  (M-value (var-value stmt) original-state)
-                  (state-remove (var-name stmt)
-                                (M-state (var-value stmt) state return break continue throw)))]
+       (begin (set-box! (get-value (var-name stmt) (get-vars-list state) (get-val-list state)) (M-value (var-value stmt) original-state)) (M-state (var-value stmt) state return break continue throw))]
+       ;;(state-add (var-name stmt)
+       ;;           (M-value (var-value stmt) original-state)
+       ;;           (state-remove (var-name stmt)
+       ;;                         (M-state (var-value stmt) state return break continue throw)))]
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
@@ -170,8 +171,8 @@
 (define state-add
   (lambda (name value state)
     (if (null? (next-layer state))
-        (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value))))
-        (cons (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list value)))
+        (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list (box value)))))
+        (cons (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list (box value))))
               (next-layer state)))))
 
 (define get-val-list cadar)
@@ -211,7 +212,7 @@
       [(number? name)                             name]
       [(eq? name 'true)                           #t]
       [(eq? name 'false)                          #f]
-      [(var-in-scope? name (get-vars-list state)) (get-value name (get-vars-list state) (get-val-list state))]
+      [(var-in-scope? name (get-vars-list state)) (unbox (get-value name (get-vars-list state) (get-val-list state)))]
       [else                                       (M-name name (next-layer state))])))
 
 ;; get-value - helper function for M-name, returns the value bound to the given variable name
