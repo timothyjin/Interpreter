@@ -33,15 +33,19 @@
                                                                   return break continue throw))]
       [(eq? (stmt-type lis) 'break)    (break (remove-top-layer state))]
       [(eq? (stmt-type lis) 'continue) (continue (remove-top-layer state))]
-      [(eq? (stmt-type lis) 'try)      (M-state (finally-body lis)
-                                                (M-state (catch-body lis)
-                                                         (call/cc (lambda (throw) (M-state (try-body lis) state
+      [(eq? (stmt-type lis) 'try)      (M-state (finally-block lis)
+                                                (M-state (catch-block lis)
+                                                         (call/cc (lambda (throw) (M-state (try-block lis) state
                                                                                            return break continue throw)))
                                                          return break continue throw)
                                                 return break continue throw)]
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
+<<<<<<< HEAD
       [(eq? (stmt-type lis) 'throw)    (throw (cons (list (list 'error) (list (box (return-value lis)))) state))]
+=======
+      [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (return-value lis) (list empty-layer)) state))]
+>>>>>>> refs/remotes/origin/Pt2Cleanup
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
@@ -52,25 +56,9 @@
 (define next-stmts cdr)
 (define return-value cadr)
 
-(define finally-body cadddr)
-(define try-body cadr)
-(define catch-body caddr)
-
-;; catch - interprets a catch clause
-(define catch
-  (lambda (stmt state return break continue throw)
-    (cond
-      [(null? state) state]
-      [(null? (get-vars-list state)) state]
-      [(eq? (car (get-vars-list state)) 'error)        (M-state (caddr stmt) (cons (list (cadr stmt) (cadar state)) (cdr state)) return break continue throw)]
-      [else state])))
-
-;; finally - interprets a finally clause
-(define finally
-  (lambda (stmt state return break continue throw)
-    (if (null? stmt)
-        state
-        (M-state (cadr stmt) state return break continue throw))))
+(define try-block cadr)
+(define catch-block caddr)
+(define finally-block cadddr)
 
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
@@ -89,7 +77,7 @@
     (cond
       [(null? stmt)
        (error 'declare "invalid declare statement")]
-      [(var-in-scope? (var-name stmt) (get-vars-list state))
+      [(var-in-scope? (var-name stmt) (var-list state))
        (error 'declare "Redefining variable error, variable previously declared")]
       [(null? (cddr stmt))
        (state-add (var-name stmt) 'novalue state)]
@@ -97,15 +85,6 @@
         (state-add (var-name stmt)
                    (M-value (var-value stmt) state)
                    (M-state (var-value stmt) state return break continue throw))])))
-
-;; is-declared? - returns true if the given variable name has been declared in the current scope,
-;; otherwise false
-(define is-declared?
-  (lambda (name state)
-    (cond
-      [(null? state)                    #f]
-      [(eq? name (get-vars-list state)) #t]
-      [else                             (is-declared? name (next-layer state))])))
 
 ;; assign - interprets a varible assignment statement, returns a value and state
 (define assign
@@ -115,12 +94,20 @@
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
        (error 'assign-error "variable not found, using before declaring")]
+<<<<<<< HEAD
       [(var-in-scope? (var-name stmt) (get-vars-list state))
        (begin (set-box! (get-value (var-name stmt) (get-vars-list state) (get-val-list state)) (M-value (var-value stmt) original-state)) (M-state (var-value stmt) state return break continue throw))]
        ;;(state-add (var-name stmt)
        ;;           (M-value (var-value stmt) original-state)
        ;;           (state-remove (var-name stmt)
        ;;                         (M-state (var-value stmt) state return break continue throw)))]
+=======
+      [(var-in-scope? (var-name stmt) (var-list state))
+       (state-add (var-name stmt)
+                  (M-value (var-value stmt) original-state)
+                  (state-remove (var-name stmt)
+                                (M-state (var-value stmt) state return break continue throw)))]
+>>>>>>> refs/remotes/origin/Pt2Cleanup
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
@@ -128,7 +115,8 @@
 (define var-name cadr)
 (define var-value caddr)
 
-;; var-in-scope? - return true if the given list contains the given variable, otherwise false
+;; var-in-scope? - returns true if the given variable has been declared in the current scope,
+;; otherwise false
 (define var-in-scope?
   (lambda (var lis)
     (cond
@@ -144,11 +132,11 @@
          (M-state (statement stmt)
                   (M-state (condition stmt) state return break continue throw)
                   return break continue throw)]
-        [(null? (else-statement stmt))
+        [(null? (cdddr stmt))
          (M-state (condition stmt) state
                   return break continue throw)]
         [else
-          (M-state (car (else-statement stmt))
+          (M-state (else-statement stmt)
                    (M-state (condition stmt) state return break continue throw)
                    return break continue throw)])))
 
@@ -165,29 +153,61 @@
 
 (define condition cadr)
 (define statement caddr)
-(define else-statement cdddr)
+(define else-statement cadddr)
+
+;; catch - interprets a catch clause
+(define catch
+  (lambda (stmt state return break continue throw)
+    (cond
+      [(null? state)
+       state]
+      [(null? (var-list state))
+       state]
+      [(eq? (car (var-list state)) 'error)
+       (M-state (catch-body stmt) (cons (list (catch-exception stmt) (val-list state)) (next-layer state))
+                return break continue throw)]
+      [else
+        state])))
+
+(define catch-exception cadr)
+(define catch-body caddr)
+
+;; finally - interprets a finally clause
+(define finally
+  (lambda (stmt state return break continue throw)
+    (if (null? stmt)
+        state
+        (M-state (finally-body stmt) state return break continue throw))))
+
+(define finally-body cadr)
 
 ;; state-add - add the specified variable and its value to the top-most state layer in the program state
 (define state-add
   (lambda (name value state)
     (if (null? (next-layer state))
+<<<<<<< HEAD
         (list (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list (box value)))))
         (cons (list (append (get-vars-list state) (list name)) (append (get-val-list state) (list (box value))))
+=======
+        (list (list (append (var-list state) (list name)) (append (val-list state) (list value))))
+        (cons (list (append (var-list state) (list name)) (append (val-list state) (list value)))
+>>>>>>> refs/remotes/origin/Pt2Cleanup
               (next-layer state)))))
 
-(define get-val-list cadar)
-(define get-vars-list caar)
+(define val-list cadar)
+(define var-list caar)
 (define top-layer car)
 (define next-layer cdr)
 
-;; state-remove - removes the specified variable and its value from the top-most layer in which it appears in the program state
+;; state-remove - removes the specified variable and its value from the top-most layer in which it
+;; appears in the program state
 (define state-remove
   (lambda (name state)
     (cond
       [(null? state)
        (error 'state-remove "variable not found, using before declaring")]
-      [(var-in-scope? name (get-vars-list state))
-       (cons (remove name (get-vars-list state) (get-val-list state) empty-layer) (next-layer state))]
+      [(var-in-scope? name (var-list state))
+       (cons (remove name (var-list state) (val-list state) empty-layer) (next-layer state))]
       [else
         (cons (top-layer state) (state-remove name (next-layer state)))])))
 
@@ -208,12 +228,21 @@
 (define M-name
   (lambda (name state)
     (cond
+<<<<<<< HEAD
       [(null? state)                              (error 'M-name "variable not found, using before declaring")]
       [(number? name)                             name]
       [(eq? name 'true)                           #t]
       [(eq? name 'false)                          #f]
       [(var-in-scope? name (get-vars-list state)) (unbox (get-value name (get-vars-list state) (get-val-list state)))]
       [else                                       (M-name name (next-layer state))])))
+=======
+      [(null? state)                         (error 'M-name "variable not found, using before declaring")]
+      [(number? name)                        name]
+      [(eq? name 'true)                      #t]
+      [(eq? name 'false)                     #f]
+      [(var-in-scope? name (var-list state)) (get-value name (var-list state) (val-list state))]
+      [else                                  (M-name name (next-layer state))])))
+>>>>>>> refs/remotes/origin/Pt2Cleanup
 
 ;; get-value - helper function for M-name, returns the value bound to the given variable name
 (define get-value
