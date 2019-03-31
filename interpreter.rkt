@@ -2,7 +2,7 @@
 
 (provide (all-defined-out))
 
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 
 ;; interpret - top level function called by the user
 (define interpret
@@ -20,25 +20,53 @@
 (define M-state-outerlayer
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                      state]
-      [(not (list? lis))                state]
+      [(null? lis)                     state]
+      [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'function) (state-add (function-name lis) (make-closure (function-params lis) (function-body lis) (get-function-environment state)) state)] ;;Need update the function
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)] ;;Need update the function
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
                                                 return break continue throw)])))
-                                      
+
 
 (define function-name cadr)
 (define function-params caddr)
 (define function-body cadddr)
-(define get-closure (lambda (function-name state) (M-name (function-name state))))
-(define get-function-environment (lambda (globalS) (lambda (currentS) (append currentS globalS))))
 
+;; function - interprets a function definition
+(define function
+  (lambda (name params body state)
+    (state-add name (make-closure params body state) state)))
+
+;; make-closure - return the slocure of a function
 (define make-closure
- (lambda (params body env)
-   (list params body env)))
+ (lambda (params body state)
+   (list params body (get-function-environment state))))
+
+(define closure-params car)
+(define closure-body cadr)
+(define closure-env caddr)
+
+;; get-function-environment - returns a function that takes creates a function environment by appending
+;; the state at the function call onto the function's state in scope
+(define get-function-environment
+  (lambda (global)
+    (lambda (local)
+      (append local global))))
+
+;; filter-params - returns a state containing only the specified parameters
+(define filter-params
+  (lambda (params state)
+    (list (cons params (get-var-values params state)))))
+
+;; get-var-values - returns the corresponding values given a list of variables
+(define get-var-values
+  (lambda (vars state)
+    (if (null? vars)
+        '()
+        (cons (M-name (car vars) state) (get-var-values (cdr vars) state)))))
+
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
 (define M-state
@@ -64,8 +92,8 @@
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
       [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (return-value lis) (list empty-layer)) state))]
-      [(eq? (stmt-type lis) 'function) (state-add (function-name lis) (make-closure (function-params lis) (function-body lis) (get-function-environment state)) state)] ;;Need the function get-function environment from Tim
-      [(eq? (stmt-type lis) 'funcall)  (M-state (cadr (get-closure (function-name) state)) ((caddr (get-closure (function-name) state)) state) return break continue throw)]
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
+      [(eq? (stmt-type lis) 'funcall)  (call/cc (lambda (return) (funcall (funcall-name lis) (funcall-params lis) state return throw)))]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
@@ -78,8 +106,31 @@
 (define try-block cadr)
 (define catch-block caddr)
 (define finally-block cadddr)
+(define funcall-name cadr)
+(define funcall-params caddr)
 
-      
+;; funcall - interprets a functional call statement
+(define funcall
+  (lambda (name params state return throw)
+      (M-state (closure-body (M-name name state))
+               (bind-params (closure-params (M-name name state))
+                            params
+                            ((closure-env (M-name name state)) (filter-params params state))
+               return break continue throw))))
+
+;; bind-params - returns the given state with the formal parameters bound to the actual parameters
+;; in the topmost layer, has an accumulator-style structure
+(define bind-params
+  (lambda (formal actual state)
+    (cond
+      [(null? formal) state]
+      [(eq? (car actual) ref-operator)
+       (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual)))]    ; this is pass-by-reference, comment out if it does not work
+      [else
+       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (box (M-value (car actual) state))))])))        ; pass-by-value
+
+(define ref-operator '&)
+
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
   (lambda (state)
