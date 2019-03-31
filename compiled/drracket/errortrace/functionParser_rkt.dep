@@ -1,1 +1,0 @@
-("7.2" racket ("53e8af6a2d780027ab5b930f41e968818b9ce524" . "23c117e507a038827be33034ae94f2fefaa4643e") #"C:\\Case\\Spring 2019\\PLC\\Interpreter\\lex.rkt" (collects #"errortrace" #"errortrace-key.rkt") (collects #"racket" #"main.rkt") (collects #"racket" #"runtime-config.rkt"))
