@@ -20,7 +20,7 @@
 (define interpret-global-scope
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                     (call/cc (lambda (return) (funcall 'main '() state return throw)))]
+      [(null? lis)                     (funcall 'main (closure-params (M-name 'main state)) state return throw)]
       [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)] ;;Need update the function
@@ -52,29 +52,6 @@
   (lambda (global)
     (lambda (local)
       (append local global))))
-
-;; filter-params - returns a state containing only the specified parameters
-(define filter-params
-  (lambda (params state)
-    (list (cons params (list (get-var-values params state))))))
-
-;; get-var-values - returns the corresponding values given a list of variables
-(define get-var-values
-  (lambda (vars state)
-    (if (null? vars)
-        '()
-        (cons (get-box-value (car vars) state) (get-var-values (cdr vars) state)))))
-
-;; get-box-value - returns the box pointed to by the given name in the given state
-(define get-box-value
-  (lambda (name state)
-    (cond
-      [(null? state)                              (error 'M-name "variable not found, using before declaring")]
-      [(number? name)                             name]
-      [(eq? name 'true)                           #t]
-      [(eq? name 'false)                          #f]
-      [(var-in-scope? name (var-list state))      (get-value name (var-list state) (val-list state))]
-      [else                                       (get-box-value name (next-layer state))])))
 
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
@@ -140,6 +117,29 @@
        (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
        (bind-params (cdr formal) (cdr actual) (state-add (car formal) (M-value (car actual) state) state))])))        ; pass-by-value
+
+;; filter-params - returns a state containing only the specified parameters
+(define filter-params
+  (lambda (params state)
+    (list (cons params (list (get-var-values params state))))))
+
+;; get-var-values - returns the corresponding values given a list of variables
+(define get-var-values
+  (lambda (vars state)
+    (if (null? vars)
+        '()
+        (cons (get-box-value (car vars) state) (get-var-values (cdr vars) state)))))
+
+;; get-box-value - returns the box pointed to by the given name in the given state
+(define get-box-value
+  (lambda (name state)
+    (cond
+      [(null? state)                              (error 'M-name "variable not found, using before declaring")]
+      [(number? name)                             name]
+      [(eq? name 'true)                           #t]
+      [(eq? name 'false)                          #f]
+      [(var-in-scope? name (var-list state))      (get-value name (var-list state) (val-list state))]
+      [else                                       (get-box-value name (next-layer state))])))
 
 (define ref-operator '&)
 

@@ -9,3 +9,5 @@ Nothing being tested yet
 03/31 Commit (tcj/part3):
 Added function and funcall interpretation functions.
 Have not considered how get the program to run, but all of the functionality should be there.
+
+The program can now run, but there are problems with calling functions other than main.
