@@ -8,27 +8,25 @@
 (define interpret
   (lambda (filename)
     (call/cc (lambda (return)
-       (M-state (parser filename)
-                (list empty-layer)
-                return
-                (lambda (state) (error 'break "invalid break"))
-                (lambda (state) (error 'continue "invalid continue"))
-                (lambda (state) (error 'throw "invalid throw")))))))
+       (interpret-global-scope (parser filename)
+                               (list empty-layer)
+                               return
+                               (lambda (state) (error 'break "invalid break"))
+                               (lambda (state) (error 'continue "invalid continue"))
+                               (lambda (state) (error 'throw "invalid throw")))))))
 
 (define empty-layer (list '() '()))
 
-(define M-state-outerlayer
+(define interpret-global-scope
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                     state]
+      [(null? lis)                     (call/cc (lambda (return) (funcall 'main '() state return throw)))]
       [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)] ;;Need update the function
-      [else                            (M-state (next-stmts lis)
-                                                (M-state (first-stmt lis) state
-                                                         return break continue throw)
-                                                return break continue throw)])))
-
+      [else                            (interpret-global-scope (next-stmts lis)
+                                                               (M-state (first-stmt lis) state return break continue throw)
+                                                               return break continue throw)])))
 
 (define function-name cadr)
 (define function-params caddr)
@@ -58,14 +56,25 @@
 ;; filter-params - returns a state containing only the specified parameters
 (define filter-params
   (lambda (params state)
-    (list (cons params (get-var-values params state)))))
+    (list (cons params (list (get-var-values params state))))))
 
 ;; get-var-values - returns the corresponding values given a list of variables
 (define get-var-values
   (lambda (vars state)
     (if (null? vars)
         '()
-        (cons (M-name (car vars) state) (get-var-values (cdr vars) state)))))
+        (cons (get-box-value (car vars) state) (get-var-values (cdr vars) state)))))
+
+;; get-box-value - returns the box pointed to by the given name in the given state
+(define get-box-value
+  (lambda (name state)
+    (cond
+      [(null? state)                              (error 'M-name "variable not found, using before declaring")]
+      [(number? name)                             name]
+      [(eq? name 'true)                           #t]
+      [(eq? name 'false)                          #f]
+      [(var-in-scope? name (var-list state))      (get-value name (var-list state) (val-list state))]
+      [else                                       (get-box-value name (next-layer state))])))
 
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
@@ -112,11 +121,14 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state return throw)
-      (M-state (closure-body (M-name name state))
-               (bind-params (closure-params (M-name name state))
-                            params
-                            ((closure-env (M-name name state)) (filter-params params state))
-               return break continue throw))))
+    (M-state (closure-body (M-name name state))
+             (bind-params (closure-params (M-name name state))
+                          params
+                          ((closure-env (M-name name state)) (add-layer (filter-params params state))))
+             return
+             (lambda (state) (error 'break "invalid break"))
+             (lambda (state) (error 'continue "invalid continue"))
+             throw)))
 
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
@@ -125,9 +137,9 @@
     (cond
       [(null? formal) state]
       [(eq? (car actual) ref-operator)
-       (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual)))]    ; this is pass-by-reference, comment out if it does not work
+       (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
-       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (box (M-value (car actual) state))))])))        ; pass-by-value
+       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (M-value (car actual) state) state))])))        ; pass-by-value
 
 (define ref-operator '&)
 
