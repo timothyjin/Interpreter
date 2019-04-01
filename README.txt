@@ -46,3 +46,22 @@ continue added.
 Test 1-10 passed.
 However, break and continue has an error problem, also when continues and breaks the state does not pop top layer.
 
+
+Changes from branch 'Amrish' (03/06/2019):
+Changed the representation of the state so that each scope has its bindings in its own list.
+For example:
+    ((a b c) (1 2 3) (x y z) (4 5 6)) -> (((a b c) (1 2 3)) ((x y z) (4 5 6)))
+Hopefully, this makes changes for Part 3 easier to incorporate into pre-existing code.
+
+Changed variable declarations so that variables with the same name can exist between different scopes.
+Changes to a variable with a specific name will affect only the first appearance of the variable with that name in the state.
+Declaring a variable with the same name in an inner scope never happens in any of the given test cases, so this change does not affect any test results in this part of the assignment.
+This functionality might be necessary for Part 3 though.
+
+Some function names were changed to be more consistent/clear.
+Elaborated a bit on some function descriptions.
+
+***TODO***
+More abstraction in the "catch" function.
+Indenting and line lengths need to be improved in general for readability.
+Consider moving all "helper functions" (i.e. not top-level or "M-" functions) and abstraction definitions to the bottom for readability.
