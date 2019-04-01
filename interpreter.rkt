@@ -64,7 +64,7 @@
       [(eq? (stmt-type lis) '=)        (assign lis state state return break continue throw)]
       [(eq? (stmt-type lis) 'if)       (if-else lis state return break continue throw)]
       [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while lis state return break continue throw)))]
-      [(eq? (stmt-type lis) 'return)   (return (M-value (return-value lis) state))]
+      [(eq? (stmt-type lis) 'return)   (return (M-value (return-value lis) state throw))]
       [(eq? (stmt-type lis) 'begin)    (remove-top-layer (M-state (next-stmts lis) (add-layer state)
                                                                   return break continue throw))]
       [(eq? (stmt-type lis) 'break)    (break (remove-top-layer state))]
@@ -77,7 +77,7 @@
                                                 return break continue throw)]
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (return-value lis) (list empty-layer)) state))]
+      [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (M-value (return-value lis) state throw) (list empty-layer)) state))]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
       [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state throw)]
       [else                            (M-state (next-stmts lis)
@@ -109,11 +109,19 @@
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
                           params
-                          ((closure-env (M-name name state)) (add-layer (filter-params params state))))
+                          ((closure-env (M-name name state)) (add-layer state)));;(add-layer (filter-params params state))))
              return 
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
              throw)))))
+
+;; find global state
+(define find-global-state
+  (lambda (state)
+    (cond
+      [(null? state) state]
+      [(null? (cdr state)) (list (car state))]
+      [else (find-global-state (cdr state))])))
 
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
@@ -127,7 +135,7 @@
      ; [(eq? (car actual) ref-operator)
      ;  (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
-       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (M-value (car actual) state) state))])))        ; pass-by-value
+       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (M-value (car actual) state (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
 
 ;; filter-params - returns a state containing only the specified parameters
 (define filter-params
@@ -177,7 +185,7 @@
        (state-add (var-name stmt) 'novalue state)]
       [else
         (state-add (var-name stmt)
-                   (M-value (var-value stmt) state)
+                   (M-value (var-value stmt) state throw)
                    state)])))
                   ;; (M-state (var-value stmt) state return break continue throw))])))
 
@@ -191,7 +199,7 @@
        (error 'assign-error "variable not found, out-of-scope")]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
-                        (M-value (var-value stmt) state))
+                        (M-value (var-value stmt) original-state throw))
               (M-state (var-value stmt) state return break continue throw))]
       [else
         (cons (car state)
@@ -213,7 +221,7 @@
 (define if-else
   (lambda (stmt state return break continue throw)
       (cond
-        [(M-value (condition stmt) state)
+        [(M-value (condition stmt) state throw)
          (M-state (statement stmt)
                   (M-state (condition stmt) state return break continue throw)
                   return break continue throw)]
@@ -228,7 +236,7 @@
 ;; while - interprets a while statement
 (define while
   (lambda (stmt state return break continue throw)
-       (if (M-value (condition stmt) state)
+       (if (M-value (condition stmt) state throw)
            (while stmt (call/cc (lambda (continue)
                                   (M-state (statement stmt)
                                            (M-state (condition stmt) state return break continue throw)
@@ -328,27 +336,27 @@
 
 ;; M-value - returns the value of a arithmetic/boolean expression
 (define M-value
-  (lambda (expr state)
+  (lambda (expr state throw)
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
-      [(eq? (math-operator expr) '=) (M-value (var-value expr) state)]
-      [(eq? (stmt-type expr) 'funcall)  (funcallv (funcall-name expr) (funcall-params expr) state (lambda (throw) (error 'placeholder "Placeholder Error")))]
-      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state))]
-      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state)))]
-      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '&&) (and (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state))])))
+      [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
+      [(eq? (stmt-type expr) 'funcall)  (funcallv (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state throw))]
+      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw)))]
+      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '&&) (and (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state throw))])))
 
 (define math-operator car)
 (define comp-operator car)
