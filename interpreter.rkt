@@ -23,7 +23,7 @@
       [(null? lis)                     (funcall 'main (closure-params (M-name 'main state)) state return throw)]
       [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)] ;;Need update the function
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
       [else                            (interpret-global-scope (next-stmts lis)
                                                                (M-state (first-stmt lis) state return break continue throw)
                                                                return break continue throw)])))
@@ -79,7 +79,7 @@
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
       [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (return-value lis) (list empty-layer)) state))]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
-      [(eq? (stmt-type lis) 'funcall)  (call/cc (lambda (return) (funcall (funcall-name lis) (funcall-params lis) state return throw)))]
+      [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state return throw)]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
@@ -179,7 +179,9 @@
       [(null? state)
        (error 'assign-error "variable not found, using before declaring")]
       [(var-in-scope? (var-name stmt) (var-list state))
-       (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state)) (M-value (var-value stmt) original-state)) (M-state (var-value stmt) state return break continue throw))]
+       (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
+                        (M-value (var-value stmt) state))
+              (M-state (var-value stmt) state return break continue throw))]
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
