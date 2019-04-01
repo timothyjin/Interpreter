@@ -93,7 +93,7 @@
 (define catch-block caddr)
 (define finally-block cadddr)
 (define funcall-name cadr)
-(define funcall-params caddr)
+(define funcall-params cddr)
 
 ;; funcall - interprets a functional call statement
 (define funcall
@@ -112,7 +112,8 @@
 (define bind-params
   (lambda (formal actual state)
     (cond
-      [(null? formal) state]
+      [(null? formal)
+       state]
       [(eq? (car actual) ref-operator)
        (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
