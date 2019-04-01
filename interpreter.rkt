@@ -20,7 +20,7 @@
 (define interpret-global-scope
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                     (funcall 'main (closure-params (M-name 'main state)) state throw)]
+      [(null? lis)                     (funcallv 'main (closure-params (M-name 'main state)) state throw)]
       [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
@@ -98,15 +98,7 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state throw)
-    (call/cc (lambda (return)
-    (M-state (closure-body (M-name name state))
-             (bind-params (closure-params (M-name name state))
-                          params
-                          ((closure-env (M-name name state)) (add-layer state)))
-             return
-             (lambda (state) (error 'break "invalid break"))
-             (lambda (state) (error 'continue "invalid continue"))
-             throw)))))
+    (state-add name (funcallv name params state throw) state)))
 
 ;; funcallv - interprets a functional call statement
 (define funcallv
@@ -117,7 +109,7 @@
              (bind-params (closure-params (M-name name state))
                           params
                           ((closure-env (M-name name state)) (add-layer state)));;(add-layer (filter-params params state))))
-             return
+             return 
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
              throw)))))
@@ -185,7 +177,8 @@
       [else
         (state-add (var-name stmt)
                    (M-value (var-value stmt) state)
-                   (M-state (var-value stmt) state return break continue throw))])))
+                   state)])))
+                  ;; (M-state (var-value stmt) state return break continue throw))])))
 
 ;; assign - interprets a varible assignment statement, returns a value and state
 (define assign
