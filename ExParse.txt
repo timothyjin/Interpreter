@@ -1,30 +1,29 @@
-function divide(x, y) {
-  if (y == 0)
-    throw 1000000;
-  return x / y;
+function min(x, y, z) {
+  if (x < y) {
+    if (x < z)
+      return x;
+    else if (z < x)
+      return z;
+  }
+  else if (y > z)
+    return z;
+  else
+    return y;
 }
 
- function main() {
-  var x = 0;
-  var j = 1;
+var x = 10;
+var y = 20;
+var z = 30;
 
-  try {
-    while (j >= 0) {
-    var i = 10;
-    while (i >= 0) {
-      try {
-        x = x + divide(10*i, i);
-      }
-      catch(e) {
-        x = x + divide(e, j);
-      }
-      i = i - 1;
-    }
-    j = j - 1;
-   }
-  }
-  catch (e2) {
-    x = x * 2;
-  }
-  return x;
+var min1 = min(x,y,z);
+var min2 = min(z,y,x);
+
+function main() {
+  var min3 = min(y,z,x);
+
+  if (min1 == min3)
+    if (min1 == min2)
+      if (min2 == min3)
+        return 1;
+  return 0;
 }

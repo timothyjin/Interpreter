@@ -35,7 +35,7 @@
 ;; function - interprets a function definition
 (define function
   (lambda (name params body state)
-    (state-add name (make-closure params body state) state)))
+    (state-add name (make-closure params body (state-add name (make-closure params body state) state)) state)))
 
 ;; make-closure - return the closure of a function
 (define make-closure
@@ -98,7 +98,8 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state throw)
-    (state-add name (funcallv name params state throw) state)))
+    (state-remove name (state-add name (funcallv name params state throw) state))))
+;;    (state-add name (funcallv name params state throw) state)))
 
 ;; funcallv - interprets a functional call statement
 (define funcallv
@@ -108,7 +109,7 @@
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
                           params
-                          ((closure-env (M-name name state)) (add-layer state)));;(add-layer (filter-params params state))))
+                          ((closure-env (M-name name state)) (add-layer (filter-params params state))))
              return 
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
