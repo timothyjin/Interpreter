@@ -98,14 +98,15 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state throw)
+    (call/cc (lambda (return)
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
                           params
-                          ((closure-env (M-name name state)) (add-layer (filter-params params state))))
-             (lambda (value) state)
+                          ((closure-env (M-name name state)) (add-layer state)))
+             return
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
-             throw)))
+             throw)))))
 
 ;; funcallv - interprets a functional call statement
 (define funcallv
@@ -115,7 +116,7 @@
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
                           params
-                          ((closure-env (M-name name state)) (add-layer (filter-params params state))))
+                          ((closure-env (M-name name state)) (add-layer state)));;(add-layer (filter-params params state))))
              return
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
@@ -126,8 +127,10 @@
 (define bind-params
   (lambda (formal actual state)
     (cond
-      [(null? formal)
+      [(and (null? formal) (null? actual))
        state]
+      [(or (null? formal) (null? actual))
+       (error 'parameters "Mismatched parameters and arguments")]
      ; [(eq? (car actual) ref-operator)
      ;  (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
@@ -191,7 +194,7 @@
       [(null? stmt)
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
-       (error 'assign-error "variable not found, using before declaring")]
+       (error 'assign-error "variable not found, out-of-scope")]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
                         (M-value (var-value stmt) state))
