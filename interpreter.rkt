@@ -35,12 +35,12 @@
 ;; function - interprets a function definition
 (define function
   (lambda (name params body state)
-    (state-add name (make-closure params body (state-add name (make-closure params body state) state)) state)))
+    (state-add name (make-closure params body) state)))
 
 ;; make-closure - return the closure of a function
 (define make-closure
- (lambda (params body state)
-   (list params body (get-function-environment state))))
+ (lambda (params body)
+   (list params body get-function-environment)))
 
 (define closure-params car)
 (define closure-body cadr)
@@ -48,10 +48,7 @@
 
 ;; get-function-environment - returns a function that takes creates a function environment by appending
 ;; the state at the function call onto the function's state in scope
-(define get-function-environment
-  (lambda (global)
-    (lambda (local)
-      (append local global))))
+(define get-function-environment (lambda (state) state))
 
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
@@ -98,7 +95,7 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state throw)
-    (state-remove name (state-add name (funcallv name params state throw) state))))
+    (begin (funcallv name params state throw) state)))
 ;;    (state-add name (funcallv name params state throw) state)))
 
 ;; funcallv - interprets a functional call statement
@@ -109,24 +106,24 @@
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
                           params
-                          ((closure-env (M-name name state)) (add-layer state)));;(add-layer (filter-params params state))))
+                          state
+                          ((closure-env (M-name name state)) (add-layer (find-global-state name state))))
              return 
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
              throw)))))
 
-;; find global state
 (define find-global-state
-  (lambda (state)
+  (lambda (name state)
     (cond
-      [(null? state) state]
-      [(null? (cdr state)) (list (car state))]
-      [else (find-global-state (cdr state))])))
+      [(var-in-scope? name (var-list state)) state]
+      [else (find-global-state name (next-layer state))])))
+
 
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
 (define bind-params
-  (lambda (formal actual state)
+  (lambda (formal actual localState state)
     (cond
       [(and (null? formal) (null? actual))
        state]
@@ -135,32 +132,8 @@
      ; [(eq? (car actual) ref-operator)
      ;  (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
-       (bind-params (cdr formal) (cdr actual) (state-add (car formal) (M-value (car actual) state (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
+       (bind-params (cdr formal) (cdr actual) localState (state-add (car formal) (M-value (car actual) localState (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
 
-;; filter-params - returns a state containing only the specified parameters
-(define filter-params
-  (lambda (params state)
-    (list (cons params (list (get-var-values params state))))))
-
-;; get-var-values - returns the corresponding values given a list of variables
-(define get-var-values
-  (lambda (vars state)
-    (if (null? vars)
-        '()
-        (cons (get-box-value (car vars) state) (get-var-values (cdr vars) state)))))
-
-;; get-box-value - returns the box pointed to by the given name in the given state
-(define get-box-value
-  (lambda (name state)
-    (cond
-      [(null? state)                              (error 'M-name "variable not found, using before declaring")]
-      [(number? name)                             name]
-      [(eq? name 'true)                           #t]
-      [(eq? name 'false)                          #f]
-      [(var-in-scope? name (var-list state))      (get-value name (var-list state) (val-list state))]
-      [else                                       (get-box-value name (next-layer state))])))
-
-(define ref-operator '&)
 
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
@@ -286,31 +259,6 @@
 (define var-list caar)
 (define top-layer car)
 (define next-layer cdr)
-
-;; state-remove - removes the specified variable and its value from the top-most layer in which it
-;; appears in the program state
-(define state-remove
-  (lambda (name state)
-    (cond
-      [(null? state)
-       (error 'state-remove "variable not found, using before declaring")]
-      [(var-in-scope? name (var-list state))
-       (cons (remove name (var-list state) (val-list state) empty-layer) (next-layer state))]
-      [else
-        (cons (top-layer state) (state-remove name (next-layer state)))])))
-
-;; remove - helper function for state-remove using an accumulator, returns a state layer with the
-;; specified variable removed
-(define remove
-  (lambda (name vars vals acc)
-    (cond
-      [(null? vars)
-       acc]
-      [(eq? (car vars) name)
-       (list (append (car acc) (cdr vars)) (append (cadr acc) (cdr vals)))]
-      [else
-        (remove name (cdr vars) (cdr vals)
-                (list (append (car acc) (list (car vars))) (append (cadr acc) (list (car vals)))))])))
 
 ;; M-name - returns the value of the specified variable/value
 (define M-name

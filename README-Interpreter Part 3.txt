@@ -26,19 +26,19 @@ Here is the summary of test cases right now:
 2 Y
 3 Y
 4 Y
-5 N (contract violation)
-6 N (wrong value)
+5 Y
+6 Y
 7 Y (but #t instead of true)
-8 N (variable not found)
+8 Y
 9 Y
-10 N (contract violation)
-11 N (variable not found)
+10 Y
+11 Y
 12 Y
 13 Y
-14 N (contract violation)
-15 N (contract violation)
-16 N (variable not found)
+14 N (Wrong answer = right answer * 2)
+15 Y
+16 Y
 17 Y
-18 N (contract violation)
-19 N (contract violation)
+18 Y
+19 Y
 20 N (variable not found)
