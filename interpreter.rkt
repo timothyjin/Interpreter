@@ -10,7 +10,7 @@
     (call/cc (lambda (return)
        (interpret-global-scope (parser filename)
                                (list empty-layer)
-                               return
+                                return
                                (lambda (state) (error 'break "invalid break"))
                                (lambda (state) (error 'continue "invalid continue"))
                                (lambda (state) (error 'throw "invalid throw")))))))
@@ -20,8 +20,8 @@
 (define interpret-global-scope
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                     (funcallv 'main (closure-params (M-name 'main state)) state throw)]
-      [(not (list? lis))               state]
+      [(null? lis)                     (funcall-value 'main (closure-params (M-name 'main state)) state throw)]
+      [(not (list? lis))                state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
       [else                            (interpret-global-scope (next-stmts lis)
@@ -95,23 +95,23 @@
 ;; funcall - interprets a functional call statement
 (define funcall
   (lambda (name params state throw)
-    (begin (funcallv name params state throw) state)))
-;;    (state-add name (funcallv name params state throw) state)))
+    (begin (funcall-value name params state throw) state)))
+
 
 ;; funcallv - interprets a functional call statement
-(define funcallv
+(define funcall-value
   (lambda (name params state throw)
     (call/cc (lambda (return)
        
     (M-state (closure-body (M-name name state))
              (bind-params (closure-params (M-name name state))
-                          params
-                          state
+                           params
+                           state
                           ((closure-env (M-name name state)) (add-layer (find-global-state name state))))
-             return 
+              return 
              (lambda (state) (error 'break "invalid break"))
              (lambda (state) (error 'continue "invalid continue"))
-             throw)))))
+              throw)))))
 
 (define find-global-state
   (lambda (name state)
@@ -123,16 +123,14 @@
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
 (define bind-params
-  (lambda (formal actual localState state)
+  (lambda (formal actual current-state state)
     (cond
       [(and (null? formal) (null? actual))
        state]
       [(or (null? formal) (null? actual))
        (error 'parameters "Mismatched parameters and arguments")]
-     ; [(eq? (car actual) ref-operator)
-     ;  (bind-params (cdr formal) (cddr actual) (state-add (car formal) (cadr actual) state))]    ; this is pass-by-reference, comment out if it does not work
       [else
-       (bind-params (cdr formal) (cdr actual) localState (state-add (car formal) (M-value (car actual) localState (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
+       (bind-params (cdr formal) (cdr actual) current-state (state-add (car formal) (M-value (car actual) current-state (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
 
 
 ;; add-layer - adds an empty state layer on top of the current state
@@ -173,7 +171,7 @@
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
                         (M-value (var-value stmt) original-state throw))
-              (M-state (var-value stmt) state return break continue throw))]
+              state)]
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
@@ -289,7 +287,7 @@
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
-      [(eq? (stmt-type expr) 'funcall)  (funcallv (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state throw))]
       [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
