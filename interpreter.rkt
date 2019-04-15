@@ -92,7 +92,7 @@
 (define funcall-name cadr)
 (define funcall-params cddr)
 
-;; funcall - interprets a functional call statement
+;; funcall - interprets a functional call statement 
 (define funcall
   (lambda (name params state throw)
     (begin (funcall-value name params state throw) state)))
