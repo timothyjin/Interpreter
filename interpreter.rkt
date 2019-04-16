@@ -2,20 +2,53 @@
 
 (provide (all-defined-out))
 
-(require "simpleParser.rkt")
+(require "functionParser.rkt")
 
 ;; interpret - top level function called by the user
 (define interpret
   (lambda (filename)
     (call/cc (lambda (return)
-       (M-state (parser filename)
-                (list empty-layer)
-                return
-                (lambda (state) (error 'break "invalid break"))
-                (lambda (state) (error 'continue "invalid continue"))
-                (lambda (state) (error 'throw "invalid throw")))))))
+       (interpret-global-scope (parser filename)
+                               (list empty-layer)
+                                return
+                               (lambda (state) (error 'break "invalid break"))
+                               (lambda (state) (error 'continue "invalid continue"))
+                               (lambda (state) (error 'throw "invalid throw")))))))
 
 (define empty-layer (list '() '()))
+
+(define interpret-global-scope
+  (lambda (lis state return break continue throw)
+    (cond
+      [(null? lis)                     (funcall-value 'main (closure-params (M-name 'main state)) state throw)]
+      [(not (list? lis))                state]
+      [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
+      [else                            (interpret-global-scope (next-stmts lis)
+                                                               (M-state (first-stmt lis) state return break continue throw)
+                                                               return break continue throw)])))
+
+(define function-name cadr)
+(define function-params caddr)
+(define function-body cadddr)
+
+;; function - interprets a function definition
+(define function
+  (lambda (name params body state)
+    (state-add name (make-closure params body) state)))
+
+;; make-closure - return the closure of a function
+(define make-closure
+ (lambda (params body)
+   (list params body get-function-environment)))
+
+(define closure-params car)
+(define closure-body cadr)
+(define closure-env caddr)
+
+;; get-function-environment - returns a function that takes creates a function environment by appending
+;; the state at the function call onto the function's state in scope
+(define get-function-environment (lambda (state) state))
 
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
@@ -28,7 +61,7 @@
       [(eq? (stmt-type lis) '=)        (assign lis state state return break continue throw)]
       [(eq? (stmt-type lis) 'if)       (if-else lis state return break continue throw)]
       [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while lis state return break continue throw)))]
-      [(eq? (stmt-type lis) 'return)   (return (M-value (return-value lis) state))]
+      [(eq? (stmt-type lis) 'return)   (return (M-value (return-value lis) state throw))]
       [(eq? (stmt-type lis) 'begin)    (remove-top-layer (M-state (next-stmts lis) (add-layer state)
                                                                   return break continue throw))]
       [(eq? (stmt-type lis) 'break)    (break (remove-top-layer state))]
@@ -41,7 +74,9 @@
                                                 return break continue throw)]
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (return-value lis) (list empty-layer)) state))]
+      [(eq? (stmt-type lis) 'throw)    (throw (append (state-add 'error (M-value (return-value lis) state throw) (list empty-layer)) state))]
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
+      [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state throw)]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          return break continue throw)
@@ -51,10 +86,52 @@
 (define first-stmt car)
 (define next-stmts cdr)
 (define return-value cadr)
-
 (define try-block cadr)
 (define catch-block caddr)
 (define finally-block cadddr)
+(define funcall-name cadr)
+(define funcall-params cddr)
+
+;; funcall - interprets a functional call statement 
+(define funcall
+  (lambda (name params state throw)
+    (begin (funcall-value name params state throw) state)))
+
+
+;; funcallv - interprets a functional call statement
+(define funcall-value
+  (lambda (name params state throw)
+    (call/cc (lambda (return)
+       
+    (M-state (closure-body (M-name name state))
+             (bind-params (closure-params (M-name name state))
+                           params
+                           state
+                          ((closure-env (M-name name state)) (add-layer (find-global-state name state))))
+              return 
+             (lambda (state) (error 'break "invalid break"))
+             (lambda (state) (error 'continue "invalid continue"))
+              throw)))))
+
+(define find-global-state
+  (lambda (name state)
+    (cond
+      [(var-in-scope? name (var-list state)) state]
+      [else (find-global-state name (next-layer state))])))
+
+
+;; bind-params - returns the given state with the formal parameters bound to the actual parameters
+;; in the topmost layer, has an accumulator-style structure
+(define bind-params
+  (lambda (formal actual current-state state)
+    (cond
+      [(and (null? formal) (null? actual))
+       state]
+      [(or (null? formal) (null? actual))
+       (error 'parameters "Mismatched parameters and arguments")]
+      [else
+       (bind-params (cdr formal) (cdr actual) current-state (state-add (car formal) (M-value (car actual) current-state (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
+
 
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
@@ -79,8 +156,9 @@
        (state-add (var-name stmt) 'novalue state)]
       [else
         (state-add (var-name stmt)
-                   (M-value (var-value stmt) state)
-                   (M-state (var-value stmt) state return break continue throw))])))
+                   (M-value (var-value stmt) state throw)
+                   state)])))
+                  ;; (M-state (var-value stmt) state return break continue throw))])))
 
 ;; assign - interprets a varible assignment statement, returns a value and state
 (define assign
@@ -89,9 +167,11 @@
       [(null? stmt)
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
-       (error 'assign-error "variable not found, using before declaring")]
+       (error 'assign-error "variable not found, out-of-scope")]
       [(var-in-scope? (var-name stmt) (var-list state))
-       (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state)) (M-value (var-value stmt) original-state)) (M-state (var-value stmt) state return break continue throw))]
+       (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
+                        (M-value (var-value stmt) original-state throw))
+              state)]
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
@@ -112,7 +192,7 @@
 (define if-else
   (lambda (stmt state return break continue throw)
       (cond
-        [(M-value (condition stmt) state)
+        [(M-value (condition stmt) state throw)
          (M-state (statement stmt)
                   (M-state (condition stmt) state return break continue throw)
                   return break continue throw)]
@@ -127,7 +207,7 @@
 ;; while - interprets a while statement
 (define while
   (lambda (stmt state return break continue throw)
-       (if (M-value (condition stmt) state)
+       (if (M-value (condition stmt) state throw)
            (while stmt (call/cc (lambda (continue)
                                   (M-state (statement stmt)
                                            (M-state (condition stmt) state return break continue throw)
@@ -178,31 +258,6 @@
 (define top-layer car)
 (define next-layer cdr)
 
-;; state-remove - removes the specified variable and its value from the top-most layer in which it
-;; appears in the program state
-(define state-remove
-  (lambda (name state)
-    (cond
-      [(null? state)
-       (error 'state-remove "variable not found, using before declaring")]
-      [(var-in-scope? name (var-list state))
-       (cons (remove name (var-list state) (val-list state) empty-layer) (next-layer state))]
-      [else
-        (cons (top-layer state) (state-remove name (next-layer state)))])))
-
-;; remove - helper function for state-remove using an accumulator, returns a state layer with the
-;; specified variable removed
-(define remove
-  (lambda (name vars vals acc)
-    (cond
-      [(null? vars)
-       acc]
-      [(eq? (car vars) name)
-       (list (append (car acc) (cdr vars)) (append (cadr acc) (cdr vals)))]
-      [else
-        (remove name (cdr vars) (cdr vals)
-                (list (append (car acc) (list (car vars))) (append (cadr acc) (list (car vals)))))])))
-
 ;; M-name - returns the value of the specified variable/value
 (define M-name
   (lambda (name state)
@@ -211,7 +266,7 @@
       [(number? name)                             name]
       [(eq? name 'true)                           #t]
       [(eq? name 'false)                          #f]
-      [(var-in-scope? name (var-list state)) (unbox (get-value name (var-list state) (val-list state)))]
+      [(var-in-scope? name (var-list state))      (unbox (get-value name (var-list state) (val-list state)))]
       [else                                       (M-name name (next-layer state))])))
 
 
@@ -227,26 +282,27 @@
 
 ;; M-value - returns the value of a arithmetic/boolean expression
 (define M-value
-  (lambda (expr state)
+  (lambda (expr state throw)
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
-      [(eq? (math-operator expr) '=) (M-value (var-value expr) state)]
-      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state))]
-      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state) (M-value (right-operand expr) state)))]
-      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '&&) (and (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state) (M-value (right-operand expr) state))]
-      [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state))])))
+      [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
+      [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state throw))]
+      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw)))]
+      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '&&) (and (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state throw))])))
 
 (define math-operator car)
 (define comp-operator car)
