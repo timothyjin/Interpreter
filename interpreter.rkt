@@ -15,12 +15,10 @@
                                (lambda (state) (error 'continue "invalid continue"))
                                (lambda (state) (error 'throw "invalid throw")))))))
 
-(define empty-layer (list '() '()))
-
 (define interpret-global-scope
   (lambda (lis state return break continue throw)
     (cond
-      [(null? lis)                     (funcall-value 'main (closure-params (M-name 'main state)) state throw)]
+      [(null? lis)                     (funcall-value 'main (function-closure-params (M-name 'main state)) state throw)]
       [(not (list? lis))                state]
       [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
@@ -28,23 +26,15 @@
                                                                (M-state (first-stmt lis) state return break continue throw)
                                                                return break continue throw)])))
 
-(define function-name cadr)
-(define function-params caddr)
-(define function-body cadddr)
-
 ;; function - interprets a function definition
 (define function
   (lambda (name params body state)
-    (state-add name (make-closure params body) state)))
+    (state-add name (make-function-closure params body) state)))
 
-;; make-closure - return the closure of a function
-(define make-closure
+;; make-function-closure - returns the closure of a function
+(define make-function-closure
  (lambda (params body)
    (list params body get-function-environment)))
-
-(define closure-params car)
-(define closure-body cadr)
-(define closure-env caddr)
 
 ;; get-function-environment - returns a function that takes creates a function environment by appending
 ;; the state at the function call onto the function's state in scope
@@ -82,43 +72,32 @@
                                                          return break continue throw)
                                                 return break continue throw)])))
 
-(define stmt-type car)
-(define first-stmt car)
-(define next-stmts cdr)
-(define return-value cadr)
-(define try-block cadr)
-(define catch-block caddr)
-(define finally-block cadddr)
-(define funcall-name cadr)
-(define funcall-params cddr)
-
-;; funcall - interprets a functional call statement 
+;; funcall - interprets a functional call statement and returns the state
 (define funcall
   (lambda (name params state throw)
-    (begin (funcall-value name params state throw) state)))
+    (begin (funcall-value name params state throw)
+           state)))
 
-
-;; funcallv - interprets a functional call statement
+;; funcall-value - interprets a functional call statement and returns the value
 (define funcall-value
   (lambda (name params state throw)
-    (call/cc (lambda (return)
-       
-    (M-state (closure-body (M-name name state))
-             (bind-params (closure-params (M-name name state))
-                           params
-                           state
-                          ((closure-env (M-name name state)) (add-layer (find-global-state name state))))
-              return 
-             (lambda (state) (error 'break "invalid break"))
-             (lambda (state) (error 'continue "invalid continue"))
-              throw)))))
+    (call/cc
+      (lambda (return)
+        (M-state (function-closure-body (M-name name state))
+                 (bind-params (function-closure-params (M-name name state))
+                              params
+                              state
+                              ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
+                 return
+                 (lambda (state) (error 'break "invalid break"))
+                 (lambda (state) (error 'continue "invalid continue"))
+                 throw)))))
 
 (define find-global-state
   (lambda (name state)
-    (cond
-      [(var-in-scope? name (var-list state)) state]
-      [else (find-global-state name (next-layer state))])))
-
+    (if (var-in-scope? name (var-list state))
+        state
+        (find-global-state name (next-layer state)))))
 
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
@@ -130,8 +109,14 @@
       [(or (null? formal) (null? actual))
        (error 'parameters "Mismatched parameters and arguments")]
       [else
-       (bind-params (cdr formal) (cdr actual) current-state (state-add (car formal) (M-value (car actual) current-state (lambda (state) (error 'throw "invalid throw"))) state))])))        ; pass-by-value
-
+       (bind-params (cdr formal)
+                    (cdr actual)
+                    current-state
+                    (state-add (car formal)
+                               (M-value (car actual)
+                                        current-state
+                                        (lambda (state) (error 'throw "invalid throw")))
+                               state))])))
 
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
@@ -155,19 +140,16 @@
       [(null? (cddr stmt))
        (state-add (var-name stmt) 'novalue state)]
       [else
-        (state-add (var-name stmt)
-                   (M-value (var-value stmt) state throw)
-                   state)])))
-                  ;; (M-state (var-value stmt) state return break continue throw))])))
+        (state-add (var-name stmt) (M-value (var-value stmt) state throw) state)])))
 
 ;; assign - interprets a varible assignment statement, returns a value and state
 (define assign
   (lambda (stmt state original-state return break continue throw)
     (cond
       [(null? stmt)
-       (error 'assign-interpret "invalid assign statement")]
+       (error 'assign "invalid assign statement")]
       [(null? state)
-       (error 'assign-error "variable not found, out-of-scope")]
+       (error 'assign "variable not found, out-of-scope")]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
                         (M-value (var-value stmt) original-state throw))
@@ -175,9 +157,6 @@
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
-
-(define var-name cadr)
-(define var-value caddr)
 
 ;; var-in-scope? - returns true if the given variable has been declared in the current scope,
 ;; otherwise false
@@ -215,10 +194,6 @@
            (M-state (condition stmt) state
                     return break continue throw))))
 
-(define condition cadr)
-(define statement caddr)
-(define else-statement cadddr)
-
 ;; catch - interprets a catch clause
 (define catch
   (lambda (stmt state return break continue throw)
@@ -233,17 +208,12 @@
       [else
         state])))
 
-(define catch-exception cadr)
-(define catch-body caddr)
-
 ;; finally - interprets a finally clause
 (define finally
   (lambda (stmt state return break continue throw)
     (if (null? stmt)
         state
         (M-state (finally-body stmt) state return break continue throw))))
-
-(define finally-body cadr)
 
 ;; state-add - add the specified variable and its value to the top-most state layer in the program state
 (define state-add
@@ -252,11 +222,6 @@
         (list (list (append (var-list state) (list name)) (append (val-list state) (list (box value)))))
         (cons (list (append (var-list state) (list name)) (append (val-list state) (list (box value))))
               (next-layer state)))))
-
-(define val-list cadar)
-(define var-list caar)
-(define top-layer car)
-(define next-layer cdr)
 
 ;; M-name - returns the value of the specified variable/value
 (define M-name
@@ -268,7 +233,6 @@
       [(eq? name 'false)                          #f]
       [(var-in-scope? name (var-list state))      (unbox (get-value name (var-list state) (val-list state)))]
       [else                                       (M-name name (next-layer state))])))
-
 
 ;; get-value - helper function for M-name, returns the value bound to the given variable name
 (define get-value
@@ -304,13 +268,52 @@
       [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
       [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state throw))])))
 
+;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
+(define is-right-operand-null?
+  (lambda (expr)
+    (null? (cddr expr))))
+
+;; Helper Functions (Abstraction) -----------------------------------------------------------------
+
+;; State representation
+(define empty-layer (list '() '()))
+(define var-list caar)
+(define val-list cadar)
+(define top-layer car)
+(define next-layer cdr)
+
+;; Closures
+(define function-closure-params car)
+(define function-closure-body cadr)
+(define function-closure-env caddr)
+
+;; Statement interpretation
+(define stmt-type car)
+(define first-stmt car)
+(define next-stmts cdr)
+(define return-value cadr)
+(define try-block cadr)
+(define catch-block caddr)
+(define finally-block cadddr)
+(define function-name cadr)
+(define function-params caddr)
+(define function-body cadddr)
+(define funcall-name cadr)
+(define funcall-params cddr)
+
+;; Statement components
+(define var-name cadr)
+(define var-value caddr)
+(define condition cadr)
+(define statement caddr)
+(define else-statement cadddr)
+(define catch-exception cadr)
+(define catch-body caddr)
+(define finally-body cadr)
+
+;; Expression evaluation
 (define math-operator car)
 (define comp-operator car)
 (define bool-operator car)
 (define left-operand cadr)
 (define right-operand caddr)
-
-;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
-(define is-right-operand-null?
-  (lambda (expr)
-    (null? (cddr expr))))
