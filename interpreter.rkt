@@ -29,16 +29,19 @@
 ;; function - interprets a function definition
 (define function
   (lambda (name params body state)
-    (state-add name (make-function-closure params body) state)))
+    (state-add name (make-function-closure name params body) state)))
 
 ;; make-function-closure - returns the closure of a function
 (define make-function-closure
- (lambda (params body)
-   (list params body get-function-environment)))
+ (lambda (name params body)
+   (list params body (get-function-environment name))))
 
-;; get-function-environment - returns a function that takes creates a function environment by appending
-;; the state at the function call onto the function's state in scope
-(define get-function-environment (lambda (state) state))
+;; get-function-environment - returns a function that returns the global state of the function name in the
+;; given state
+(define get-function-environment
+  (lambda (name)
+    (lambda (state)
+      (find-global-state name state))))
 
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
@@ -87,7 +90,7 @@
                  (bind-params (function-closure-params (M-name name state))
                               params
                               state
-                              ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
+                              (add-layer ((function-closure-env (M-name name state)) state)))
                  return
                  (lambda (state) (error 'break "invalid break"))
                  (lambda (state) (error 'continue "invalid continue"))
