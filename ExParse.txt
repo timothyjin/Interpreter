@@ -1,14 +1,21 @@
-var a = 31160;
-var b = 1476;
-if (a < b) {
-  var temp = a;
-  a = b;
-  b = temp;
+function divide(x, y) {
+  if (y == 0)
+    throw y;
+  return x / y;
 }
-var r = a % b;
-while (r != 0) {
-  a = b;
-  b = r;
-  r = a % b;
+
+function main() {
+  var x;
+
+  try {
+    x = divide(10, 5) * 10;
+    x = x + divide(5, 0);
+  }
+  catch(e) {
+    x = e;
+  }
+  finally {
+    x = x + 100;
+  }
+  return x;
 }
-return b;
