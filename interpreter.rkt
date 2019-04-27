@@ -9,16 +9,15 @@
 ;; interpret - top level function called by the user, call main on a specific class
 (define interpret
   (lambda (filename class-name)
-    (funcall-value 'main
-                   (function-closure-params (M-name 'main
-                                                    (get-function-list (string->symbol class-name)
-                                                                       (instantiate-class-state (parser filename)
-                                                                                                (list empty-layer)
-                                                                                                (lambda (state) (error 'throw "invalid throw"))))))
+    (funcall-value-static 'main
+                   '()
                    (get-function-list (string->symbol class-name)
                                       (instantiate-class-state (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))) ;Need change
+                   (instantiate-class-state (parser filename)
+                                                               (list empty-layer)
+                                                               (lambda (state) (error 'throw "invalid throw")))
                    (lambda (state) (error 'throw "invalid throw")))))
 
 (define get-function-list
@@ -133,6 +132,20 @@
                                      params
                                      state
                                      ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
+                        return
+                        (lambda (state) (error 'break "invalid break"))
+                        (lambda (state) (error 'continue "invalid continue"))
+                        throw)))))
+
+;; funcall-value-static - interprets a functional call statement and returns the value
+(define funcall-value-static
+  (lambda (name params function-state state throw)
+    (call/cc (lambda (return)
+               (M-state (function-closure-body (M-name name function-state))
+                        (bind-params (function-closure-params (M-name name function-state))
+                                     params
+                                     state
+                                     ((function-closure-env (M-name name function-state)) (add-layer state)))
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
@@ -299,6 +312,7 @@
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
+      [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
       [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state throw))]
@@ -316,6 +330,13 @@
       [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
       [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state throw))])))
 
+
+;; An instance closure:list of field values + class closure
+(define make-instance-closure
+  (lambda (class-name state)
+    (list (field-values (get-field-list class-name state)) (M-name class-name state))))
+
+(define field-values cadar)
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
 (define is-right-operand-null?
   (lambda (expr)
