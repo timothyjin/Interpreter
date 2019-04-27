@@ -25,7 +25,7 @@
   (lambda (class-name state)
     (function-list (M-name class-name state))))
 
-(define get-field-list
+(define get-field-list+
   (lambda (class-name state)
     (field-list (M-name class-name state))))
 
