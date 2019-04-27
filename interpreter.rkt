@@ -39,7 +39,7 @@
   (lambda (lis state throw)
     (cond
     [(null? lis) state]
-    [(eq? (stmt-type lis) 'class) (add-class-closure (cdr lis) state throw)]
+    [(eq? (stmt-type lis)  'class) (add-class-closure (cdr lis) state throw)]
     [else (instantiate-class-state (next-stmts lis) (instantiate-class-state (first-stmt lis) state throw) throw)])))
 
 ;; binds a class to a class closure, add them to the list of class definition(state). ex: lis = [A (extends B) body]
