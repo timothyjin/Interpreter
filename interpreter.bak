@@ -2,70 +2,31 @@
 
 (provide (all-defined-out))
 
-(require "classParser.rkt")
+(require "functionParser.rkt")
 
-
-;; interpret - top level function called by the user, call main on a specific class
+;; interpret - top level function called by the user
 (define interpret
-  (lambda (filename class-name)
-       (funcall-value 'main (closure-params (M-name 'main
-                               (get-function-list class-name (instantiate-class-state (parser filename) (list empty-layer)
-                               (lambda (state) (error 'throw "invalid throw"))))))
-                      
-                               (get-function-list class-name (instantiate-class-state (parser filename) (list empty-layer)
-                               (lambda (state) (error 'throw "invalid throw")))) ;Need change
-                               
-                               (lambda (state) (error 'throw "invalid throw")))))
+  (lambda (filename)
+    (call/cc (lambda (return)
+       (interpret-global-scope (parser filename)
+                               (list empty-layer)
+                                return
+                               (lambda (state) (error 'break "invalid break"))
+                               (lambda (state) (error 'continue "invalid continue"))
+                               (lambda (state) (error 'throw "invalid throw")))))))
 
 (define empty-layer (list '() '()))
 
-(define get-function-list
-  (lambda (class-name state)
-    (function-list (M-name class-name state))))
-
-(define get-field-list
-  (lambda (class-name state)
-    (field-list (M-name class-name state))))
-
-
-;;class closure order: parent class/instance field names/methods
-(define empty-class-closure (list (list empty-layer) (list empty-layer)))
-(define parent-class car)
-(define field-list cadr)
-(define function-list caddr)
-
-;;instantiate a list of class definition(global state)
-(define instantiate-class-state
-  (lambda (lis state throw)
+(define interpret-global-scope
+  (lambda (lis state return break continue throw)
     (cond
-    [(null? lis) state]
-    [(eq? (stmt-type lis) 'class) (add-class-closure (cdr lis) state throw)]
-    [else (instantiate-class-state (next-stmts lis) (instantiate-class-state (first-stmt lis) state throw) throw)])))
-
-;; binds a class to a class closure, add them to the list of class definition(state). ex: lis = [A (extends B) body]
-(define add-class-closure
-  (lambda (lis state throw)
-    (if (pair? (extend-stmt lis))
-        (state-add (class-name lis) (find-class-closure (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
-    (state-add (class-name lis) (find-class-closure (class-body lis) (cons '() empty-class-closure) throw) state))))
-
-(define class-body caddr)
-(define extend-stmt cadr)
-(define extend-class-name cadadr)
-(define class-name car)
-
-;; interpret the class-body and finds the class closure: add instance fields to field list and add functions to function list
-(define find-class-closure
-  (lambda (lis class-closure throw)
-    (cond
-      [(null? lis)                                                                  class-closure]
-      [(eq? (stmt-type lis) 'var)                                                  (list (parent-class class-closure) (declare lis (field-list class-closure) throw) (function-list class-closure))]
-      [(or (eq? (stmt-type lis) 'static-function) (eq? (stmt-type lis) 'function)) (list (parent-class class-closure) (field-list class-closure) (function (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
-      [else                                                                        (find-class-closure (next-stmts lis)
-                                                                                       (find-class-closure (first-stmt lis) class-closure throw) throw)])))
-                                                                                                                        
-
-
+      [(null? lis)                     (funcall-value 'main (closure-params (M-name 'main state)) state throw)]
+      [(not (list? lis))                state]
+      [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
+      [else                            (interpret-global-scope (next-stmts lis)
+                                                               (M-state (first-stmt lis) state return break continue throw)
+                                                               return break continue throw)])))
 
 (define function-name cadr)
 (define function-params caddr)
@@ -85,9 +46,6 @@
 (define closure-body cadr)
 (define closure-env caddr)
 
-
-
-
 ;; get-function-environment - returns a function that takes creates a function environment by appending
 ;; the state at the function call onto the function's state in scope
 (define get-function-environment (lambda (state) state))
@@ -99,7 +57,7 @@
     (cond
       [(null? lis)                     state]
       [(not (list? lis))               state]
-      [(eq? (stmt-type lis) 'var)      (declare lis state throw)]
+      [(eq? (stmt-type lis) 'var)      (declare lis state return break continue throw)]
       [(eq? (stmt-type lis) '=)        (assign lis state state return break continue throw)]
       [(eq? (stmt-type lis) 'if)       (if-else lis state return break continue throw)]
       [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while lis state return break continue throw)))]
@@ -188,7 +146,7 @@
 ;; declare - interprets a variable declaration/initialization statement, adding the declared variable to
 ;; the top-most state layer
 (define declare
-  (lambda (stmt state throw)
+  (lambda (stmt state return break continue throw)
     (cond
       [(null? stmt)
        (error 'declare "invalid declare statement")]
