@@ -9,13 +9,13 @@
 ;; interpret - top level function called by the user, call main on a specific class
 (define interpret
   (lambda (filename class-name)
-    (funcall-value-static 'main
+    (funcall-value-static (string->symbol class-name) 'main
                    '()
                    (get-function-list (string->symbol class-name)
-                                      (instantiate-class-state (parser filename)
+                                      (instantiate-class-state (string->symbol class-name) (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))) ;Need change
-                   (instantiate-class-state (parser filename)
+                   (instantiate-class-state (string->symbol class-name) (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))
                    (lambda (state) (error 'throw "invalid throw")))))
@@ -36,18 +36,18 @@
 
 ;; instantiate a list of class definition(global state)
 (define instantiate-class-state
-  (lambda (lis state throw)
+  (lambda (type lis state throw)
     (cond
       [(null? lis) state]
-      [(eq? (stmt-type lis) 'class) (add-class-closure (cdr lis) state throw)]
-      [else (instantiate-class-state (next-stmts lis) (instantiate-class-state (first-stmt lis) state throw) throw)])))
+      [(eq? (stmt-type lis) 'class) (add-class-closure type (cdr lis) state throw)]
+      [else (instantiate-class-state type (next-stmts lis) (instantiate-class-state type (first-stmt lis) state throw) throw)])))
 
 ;; binds a class to a class closure, add them to the list of class definition(state). ex: lis = [A (extends B) body]
 (define add-class-closure
-  (lambda (lis state throw)
+  (lambda (type lis state throw)
     (if (pair? (extend-stmt lis))
-        (state-add (class-name lis) (find-class-closure (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
-    (state-add (class-name lis) (find-class-closure (class-body lis) (cons '() empty-class-closure) throw) state))))
+        (state-add (class-name lis) (find-class-closure type (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
+    (state-add (class-name lis) (find-class-closure type (class-body lis) (cons '() empty-class-closure) throw) state))))
 
 (define class-body caddr)
 (define extend-stmt cadr)
@@ -56,20 +56,20 @@
 
 ;; interpret the class-body and finds the class closure: add instance fields to field list and add functions to function list
 (define find-class-closure
-  (lambda (lis class-closure throw)
+  (lambda (type lis class-closure throw)
     (cond
       [(null? lis)
        class-closure]
       [(eq? (stmt-type lis) 'var)
        (list (parent-class class-closure)
-             (declare lis (field-list class-closure) throw)
+             (declare type lis (field-list class-closure) throw)
              (function-list class-closure))]
       [(or (eq? (stmt-type lis) 'static-function) (eq? (stmt-type lis) 'function))
        (list (parent-class class-closure)
              (field-list class-closure)
              (function (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
       [else
-        (find-class-closure (next-stmts lis) (find-class-closure (first-stmt lis) class-closure throw) throw)])))
+        (find-class-closure type (next-stmts lis) (find-class-closure type (first-stmt lis) class-closure throw) throw)])))
 
 ;; function - interprets a function definition
 (define function
@@ -88,47 +88,47 @@
 ;; M-state - given a statement and a state, returns the state resulting from applying the statement
 ;; to the given state
 (define M-state
-  (lambda (lis state return break continue throw)
+  (lambda (type lis state return break continue throw)
     (cond
       [(null? lis)                     state]
       [(not (list? lis))               state]
       [(eq? (stmt-type lis) 'var)      (declare lis state throw)]
       [(eq? (stmt-type lis) '=)        (assign lis state state return break continue throw)]
-      [(eq? (stmt-type lis) 'if)       (if-else lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while lis state return break continue throw)))]
-      [(eq? (stmt-type lis) 'return)   (return (M-value (return-value lis) state throw))]
-      [(eq? (stmt-type lis) 'begin)    (remove-top-layer (M-state (next-stmts lis) (add-layer state)
+      [(eq? (stmt-type lis) 'if)       (if-else type lis state return break continue throw)]
+      [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while type lis state return break continue throw)))]
+      [(eq? (stmt-type lis) 'return)   (return (M-value type (return-value lis) state throw))]
+      [(eq? (stmt-type lis) 'begin)    (remove-top-layer (M-state type (next-stmts lis) (add-layer state)
                                                                   return break continue throw))]
       [(eq? (stmt-type lis) 'break)    (break (remove-top-layer state))]
       [(eq? (stmt-type lis) 'continue) (continue (remove-top-layer state))]
-      [(eq? (stmt-type lis) 'try)      (M-state (finally-block lis)
-                                                (M-state (catch-block lis)
+      [(eq? (stmt-type lis) 'try)      (M-state type (finally-block lis)
+                                                (M-state type (catch-block lis)
                                                          (call/cc (lambda (throw)
-                                                                    (M-state (try-block lis)
+                                                                    (M-state type (try-block lis)
                                                                              state return break continue throw)))
                                                          return break continue throw)
                                                 return break continue throw)]
       [(eq? (stmt-type lis) 'catch)    (catch lis state return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state return break continue throw)]
-      [(eq? (stmt-type lis) 'throw)    (throw (state-add 'error (M-value (return-value lis) state throw) (add-layer state)))]
+      [(eq? (stmt-type lis) 'throw)    (throw (state-add 'error (M-value type (return-value lis) state throw) (add-layer state)))]
       [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
-      [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state throw)]
-      [else                            (M-state (next-stmts lis)
-                                                (M-state (first-stmt lis) state
+      [(eq? (stmt-type lis) 'funcall)  (funcall type (funcall-name lis) (funcall-params lis) state throw)]
+      [else                            (M-state type (next-stmts lis)
+                                                (M-state type (first-stmt lis) state
                                                          return break continue throw)
                                                 return break continue throw)])))
 
 ;; funcall - interprets a functional call statement and returns the resulting state
 (define funcall
-  (lambda (name params state throw)
-    (begin (funcall-value name params state throw) state)))
+  (lambda (type name params state throw)
+    (begin (funcall-value type name params state throw) state)))
 
 ;; funcall-value - interprets a functional call statement and returns the value
 (define funcall-value
-  (lambda (name params state throw)
+  (lambda (type name params state throw)
     (call/cc (lambda (return)
-               (M-state (function-closure-body (M-name name state))
-                        (bind-params (function-closure-params (M-name name state))
+               (M-state type (function-closure-body (M-name name state))
+                        (bind-params type (function-closure-params (M-name name state))
                                      params
                                      state
                                      ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
@@ -139,9 +139,9 @@
 
 ;; funcall-value-static - interprets a functional call statement and returns the value
 (define funcall-value-static
-  (lambda (name params function-state state throw)
+  (lambda (type name params function-state state throw)
     (call/cc (lambda (return)
-               (M-state (function-closure-body (M-name name function-state))
+               (M-state type (function-closure-body (M-name name function-state))
                         (bind-params (function-closure-params (M-name name function-state))
                                      params
                                      state
@@ -160,7 +160,7 @@
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
 (define bind-params
-  (lambda (formal actual current-state state)
+  (lambda (type formal actual current-state state)
     (cond
       [(and (null? formal) (null? actual))
        state]
@@ -171,7 +171,7 @@
                     (cdr actual)
                     current-state
                     (state-add (car formal)
-                               (M-value (car actual)
+                               (M-value type (car actual)
                                         current-state
                                         (lambda (state) (error 'throw "invalid throw")))
                                state))])))
@@ -190,7 +190,7 @@
 ;; declare - interprets a variable declaration/initialization statement, adding the declared variable to
 ;; the top-most state layer
 (define declare
-  (lambda (stmt state throw)
+  (lambda (type stmt state throw)
     (cond
       [(null? stmt)
        (error 'declare "invalid declare statement")]
@@ -200,12 +200,12 @@
        (state-add (var-name stmt) 'novalue state)]
       [else
         (state-add (var-name stmt)
-                   (M-value (var-value stmt) state throw)
+                   (M-value type (var-value stmt) state throw)
                    state)])))
 
 ;; assign - interprets a varible assignment statement, returns a value and state
 (define assign
-  (lambda (stmt state original-state return break continue throw)
+  (lambda (type stmt state original-state return break continue throw)
     (cond
       [(null? stmt)
        (error 'assign-interpret "invalid assign statement")]
@@ -213,7 +213,7 @@
        (error 'assign-error "variable not found, out-of-scope")]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
-                        (M-value (var-value stmt) original-state throw))
+                        (M-value type (var-value stmt) original-state throw))
               state)]
       [else
         (cons (car state)
@@ -230,51 +230,51 @@
 
 ;; if-else - interprets an if-else statement
 (define if-else
-  (lambda (stmt state return break continue throw)
+  (lambda (type stmt state return break continue throw)
       (cond
-        [(M-value (condition stmt) state throw)
-         (M-state (statement stmt)
-                  (M-state (condition stmt) state return break continue throw)
+        [(M-value type (condition stmt) state throw)
+         (M-state type (statement stmt)
+                  (M-state type (condition stmt) state return break continue throw)
                   return break continue throw)]
         [(null? (cdddr stmt))
-         (M-state (condition stmt) state
+         (M-state type (condition stmt) state
                   return break continue throw)]
         [else
-          (M-state (else-statement stmt)
-                   (M-state (condition stmt) state return break continue throw)
+          (M-state type (else-statement stmt)
+                   (M-state type (condition stmt) state return break continue throw)
                    return break continue throw)])))
 
 ;; while - interprets a while statement
 (define while
-  (lambda (stmt state return break continue throw)
-       (if (M-value (condition stmt) state throw)
-           (while stmt (call/cc (lambda (continue)
-                                  (M-state (statement stmt)
-                                           (M-state (condition stmt) state return break continue throw)
+  (lambda (type stmt state return break continue throw)
+       (if (M-value type (condition stmt) state throw)
+           (while type stmt (call/cc (lambda (continue)
+                                  (M-state type (statement stmt)
+                                           (M-state type (condition stmt) state return break continue throw)
                                            return break continue throw))) return break continue throw)
-           (M-state (condition stmt) state
+           (M-state type (condition stmt) state
                     return break continue throw))))
 
 ;; catch - interprets a catch clause
 (define catch
-  (lambda (stmt state return break continue throw)
+  (lambda (type stmt state return break continue throw)
     (cond
       [(null? state)
        state]
       [(null? (var-list state))
        state]
       [(eq? (car (var-list state)) 'error)
-       (M-state (catch-body stmt) (cons (list (catch-exception stmt) (val-list state)) (next-layer state))
+       (M-state type (catch-body stmt) (cons (list (catch-exception stmt) (val-list state)) (next-layer state))
                 return break continue throw)]
       [else
         state])))
 
 ;; finally - interprets a finally clause
 (define finally
-  (lambda (stmt state return break continue throw)
+  (lambda (type stmt state return break continue throw)
     (if (null? stmt)
         state
-        (M-state (finally-body stmt) state return break continue throw))))
+        (M-state type (finally-body stmt) state return break continue throw))))
 
 ;; state-add - add the specified variable and its value to the top-most state layer in the program state
 (define state-add
@@ -307,28 +307,28 @@
 
 ;; M-value - returns the value of a arithmetic/boolean expression
 (define M-value
-  (lambda (expr state throw)
+  (lambda (type expr state throw)
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
-      [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
+      [(eq? (math-operator expr) '=) (M-value type (var-value expr) state throw)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
       [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
-      [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state throw))]
-      [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (math-operator expr) '*) (* (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (math-operator expr) '/) (quotient (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (math-operator expr) '%) (remainder (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (comp-operator expr) '==) (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (comp-operator expr) '!=) (not (eq? (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw)))]
-      [(eq? (comp-operator expr) '<) (< (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (comp-operator expr) '>) (> (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (comp-operator expr) '<=) (<= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (comp-operator expr) '>=) (>= (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (bool-operator expr) '&&) (and (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (bool-operator expr) '||) (or (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
-      [(eq? (bool-operator expr) '!) (not (M-value (left-operand expr) state throw))])))
+      [(eq? (math-operator expr) '+) (+ (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value type (left-operand expr) state throw))]
+      [(eq? (math-operator expr) '-) (- (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '*) (* (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '/) (quotient (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (math-operator expr) '%) (remainder (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '==) (eq? (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '!=) (not (eq? (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw)))]
+      [(eq? (comp-operator expr) '<) (< (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>) (> (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '<=) (<= (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (comp-operator expr) '>=) (>= (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '&&) (and (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '||) (or (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
+      [(eq? (bool-operator expr) '!) (not (M-value type (left-operand expr) state throw))])))
 
 
 ;; An instance closure:list of field values + class closure
