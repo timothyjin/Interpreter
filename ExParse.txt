@@ -1,9 +1,13 @@
 class A {
-  var x = 5;
+
+  var x = 100;
   var y = 10;
 
+  function add(g, h) {
+    return g + h;
+  }
+
   static function main() {
-    var a = new A();
-    return a.x + a.y;
+    return new A().add(new A().x, new A().y);
   }
 }

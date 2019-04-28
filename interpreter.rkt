@@ -15,9 +15,9 @@
                                       (instantiate-class-state  (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))) ;Need change
-                   (list (instantiate-class-state (parser filename)
+                   (instantiate-class-state (parser filename)
                                                                (list empty-layer)
-                                                               (lambda (state) (error 'throw "invalid throw"))))
+                                                               (lambda (state) (error 'throw "invalid throw")))
                    (lambda (state) (error 'throw "invalid throw")))))
 
 (define get-function-list
@@ -180,12 +180,12 @@
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
   (lambda (state)
-    (cons empty-layer (car state))))
+    (cons empty-layer state)))
 
 ;; remove-top-layer - removes the top-most state layer from the current state
 (define remove-top-layer
   (lambda (state)
-    (cons (next-layer state) (cdr state))))
+    (next-layer state)))
 
 ;; declare - interprets a variable declaration/initialization statement, adding the declared variable to
 ;; the top-most state layer
@@ -226,6 +226,7 @@
     (cond
       [(null? lis)         #f]
       [(eq? (car lis) var) #t]
+      [(and (list? var) (eq? 'dot (car var))) (var-in-scope? (cadr var) lis)]
       [else                (var-in-scope? var (cdr lis))])))
 
 ;; if-else - interprets an if-else statement
@@ -349,8 +350,8 @@
 ;; State representation
 (define var-list caar)
 (define val-list cadar)
-(define top-layer caar)
-(define next-layer cdar)
+(define top-layer car)
+(define next-layer cdr)
 
 ;; Closures
 (define function-closure-params car)
