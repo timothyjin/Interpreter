@@ -12,12 +12,12 @@
     (funcall-value-static (string->symbol class-name) 'main
                    '()
                    (get-function-list (string->symbol class-name)
-                                      (instantiate-class-state (string->symbol class-name) (parser filename)
+                                      (instantiate-class-state  (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))) ;Need change
-                   (instantiate-class-state (string->symbol class-name) (parser filename)
+                   (list (instantiate-class-state (parser filename)
                                                                (list empty-layer)
-                                                               (lambda (state) (error 'throw "invalid throw")))
+                                                               (lambda (state) (error 'throw "invalid throw"))))
                    (lambda (state) (error 'throw "invalid throw")))))
 
 (define get-function-list
@@ -36,18 +36,18 @@
 
 ;; instantiate a list of class definition(global state)
 (define instantiate-class-state
-  (lambda (type lis state throw)
+  (lambda (lis state throw)
     (cond
       [(null? lis) state]
-      [(eq? (stmt-type lis) 'class) (add-class-closure type (cdr lis) state throw)]
-      [else (instantiate-class-state type (next-stmts lis) (instantiate-class-state type (first-stmt lis) state throw) throw)])))
+      [(eq? (stmt-type lis) 'class) (add-class-closure (cdr lis) state throw)]
+      [else (instantiate-class-state (next-stmts lis) (instantiate-class-state (first-stmt lis) state throw) throw)])))
 
 ;; binds a class to a class closure, add them to the list of class definition(state). ex: lis = [A (extends B) body]
 (define add-class-closure
-  (lambda (type lis state throw)
+  (lambda (lis state throw)
     (if (pair? (extend-stmt lis))
-        (state-add (class-name lis) (find-class-closure type (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
-    (state-add (class-name lis) (find-class-closure type (class-body lis) (cons '() empty-class-closure) throw) state))))
+        (state-add (class-name lis) (find-class-closure (class-name lis) (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
+    (state-add (class-name lis) (find-class-closure (class-name lis) (class-body lis) (cons '() empty-class-closure) throw) state))))
 
 (define class-body caddr)
 (define extend-stmt cadr)
@@ -92,8 +92,8 @@
     (cond
       [(null? lis)                     state]
       [(not (list? lis))               state]
-      [(eq? (stmt-type lis) 'var)      (declare lis state throw)]
-      [(eq? (stmt-type lis) '=)        (assign lis state state return break continue throw)]
+      [(eq? (stmt-type lis) 'var)      (declare type lis state throw)]
+      [(eq? (stmt-type lis) '=)        (assign type lis state state return break continue throw)]
       [(eq? (stmt-type lis) 'if)       (if-else type lis state return break continue throw)]
       [(eq? (stmt-type lis) 'while)    (call/cc (lambda (break) (while type lis state return break continue throw)))]
       [(eq? (stmt-type lis) 'return)   (return (M-value type (return-value lis) state throw))]
@@ -142,7 +142,7 @@
   (lambda (type name params function-state state throw)
     (call/cc (lambda (return)
                (M-state type (function-closure-body (M-name name function-state))
-                        (bind-params (function-closure-params (M-name name function-state))
+                        (bind-params type (function-closure-params (M-name name function-state))
                                      params
                                      state
                                      ((function-closure-env (M-name name function-state)) (add-layer state)))
@@ -180,12 +180,12 @@
 ;; add-layer - adds an empty state layer on top of the current state
 (define add-layer
   (lambda (state)
-    (cons empty-layer state)))
+    (cons empty-layer (car state))))
 
 ;; remove-top-layer - removes the top-most state layer from the current state
 (define remove-top-layer
   (lambda (state)
-    (next-layer state)))
+    (cons (next-layer state) (cdr state))))
 
 ;; declare - interprets a variable declaration/initialization statement, adding the declared variable to
 ;; the top-most state layer
@@ -217,7 +217,7 @@
               state)]
       [else
         (cons (car state)
-              (assign stmt (next-layer state) original-state return break continue throw))])))
+              (assign type stmt (next-layer state) original-state return break continue throw))])))
 
 ;; var-in-scope? - returns true if the given variable has been declared in the current scope,
 ;; otherwise false
@@ -292,6 +292,7 @@
       [(number? name)                        name]
       [(eq? name 'true)                      #t]
       [(eq? name 'false)                     #f]
+      [(and (list? name) (eq? (car name) 'dot))                     (cadr (M-name (cadr name) state))]
       [(var-in-scope? name (var-list state)) (unbox (get-value name (var-list state) (val-list state)))]
       [else                                  (M-name name (next-layer state))])))
 
@@ -311,9 +312,10 @@
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
+      [(eq? (stmt-type expr) 'dot)  (M-value type (M-name (caddr expr) (car (M-name (cadr expr)  state))) state throw)]
       [(eq? (math-operator expr) '=) (M-value type (var-value expr) state throw)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
-      [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (stmt-type expr) 'funcall)  (funcall-value type (funcall-name expr) (funcall-params expr) state throw)]
       [(eq? (math-operator expr) '+) (+ (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value type (left-operand expr) state throw))]
       [(eq? (math-operator expr) '-) (- (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
@@ -334,7 +336,7 @@
 ;; An instance closure:list of field values + class closure
 (define make-instance-closure
   (lambda (class-name state)
-    (list (field-values (get-field-list class-name state)) (M-name class-name state))))
+    (list (get-field-list class-name state) (M-name class-name state))))
 
 (define field-values cadar)
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
@@ -347,8 +349,8 @@
 ;; State representation
 (define var-list caar)
 (define val-list cadar)
-(define top-layer car)
-(define next-layer cdr)
+(define top-layer caar)
+(define next-layer cdar)
 
 ;; Closures
 (define function-closure-params car)
