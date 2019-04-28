@@ -142,15 +142,20 @@
 (define funcall-value
   (lambda (dot-expression params state throw)
     (call/cc (lambda (return)
-               (M-state (function-closure-body (M-value dot-expression state throw))
-                        (bind-params (cons 'this (function-closure-params (M-value dot-expression state throw)))
+               (M-state (function-closure-body (look-up-function dot-expression state throw))
+                        (bind-params (cons 'this (function-closure-params (look-up-function dot-expression state throw)))
                                      (cons (left-operand dot-expression) params)
                                      state
-                                     ((function-closure-env (M-value dot-expression state throw)) (add-layer state)))
+                                     ((function-closure-env (look-up-function dot-expression state throw)) (add-layer state)))
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
                         throw)))))
+
+;; look up the function in the instance closure, return the function closure
+(define look-up-function
+  (lambda (dot-expression state throw)
+    (M-value (right-operand dot-expression) (function-list (instance-class-closure (M-value (left-operand dot-expression) state throw))) throw)))
 
 ;; funcall-value-static - interprets a functional call statement and returns the value
 (define funcall-value-static
@@ -328,7 +333,7 @@
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
-      [(eq? (stmt-type expr) 'dot) (M-value (right-operand expr) (force-to-combine (M-value (left-operand expr) state throw)) throw)]
+      [(eq? (stmt-type expr) 'dot) (lookup-field (right-operand expr) (M-value (left-operand expr) state throw))]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
       [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
@@ -353,6 +358,15 @@
   (lambda (class-name state)
     (list (field-values (get-field-list class-name state)) (M-name class-name state))))
 
+(define instance-field-values car)
+(define instance-class-closure cadr)
+
+(define lookup-field
+  (lambda (name instance-closure)
+    (unbox (get-value name (field-names (field-list (instance-class-closure instance-closure))) (instance-field-values instance-closure))))) 
+
+
+     
 (define force-to-combine
   (lambda (instance-closure)
     (append (field-list (cadr instance-closure)) (function-list (cadr instance-closure)))))
