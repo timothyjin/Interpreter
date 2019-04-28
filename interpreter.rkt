@@ -244,7 +244,8 @@
       [(null? stmt)
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
-       (error 'assign-error "variable not found, out-of-scope")]
+       (field-update (cons 'dot (cons 'this (var-name stmt))) (var-value stmt) original-state return break continue throw)]
+       ;(error 'assign-error "variable not found, out-of-scope")]
       [(list? (var-name stmt)) (field-update (var-name stmt) (var-value stmt) state return break continue throw)]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
@@ -260,6 +261,7 @@
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
 
+;;update the non-static fields
 (define field-update
   (lambda (dot-expression value state return break continue throw)
     (begin (set-box! (get-value (right-operand dot-expression)
@@ -337,7 +339,7 @@
 (define M-name
   (lambda (name state)
     (cond
-      [(null? state)                         (error 'M-name "variable not found, using before declaring")]
+      [(null? state)                         (error 'M-name "variable not found, using before declaring")];(lookup-field name (M-name 'this state))];
       [(number? name)                        name]
       [(eq? name 'true)                      #t]
       [(eq? name 'false)                     #f]
