@@ -339,7 +339,7 @@
 (define M-name
   (lambda (name state)
     (cond
-      [(null? state)                         (error 'M-name "variable not found, using before declaring")];(lookup-field name (M-name 'this state))];
+      [(null? state)                         'error];(error 'M-name "variable not found, using before declaring")];(lookup-field name (M-name 'this state))];
       [(number? name)                        name]
       [(eq? name 'true)                      #t]
       [(eq? name 'false)                     #f]
@@ -361,6 +361,7 @@
   (lambda (expr state throw)
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
+      [(and (not (list? expr)) (eq? 'error (M-name expr state))) (lookup-field expr (M-name 'this state))]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
       [(eq? (stmt-type expr) 'dot) (lookup-field (right-operand expr) (M-value (left-operand expr) state throw))]
@@ -434,6 +435,7 @@
 (define function-name cadr)
 (define function-params caddr)
 (define function-body cadddr)
+(define function-class caddddr)
 (define funcall-name cadr)
 (define funcall-params cddr)
 
