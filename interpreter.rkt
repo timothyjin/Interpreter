@@ -46,8 +46,23 @@
 (define add-class-closure
   (lambda (lis state throw)
     (if (pair? (extend-stmt lis))
-        (state-add (class-name lis) (find-class-closure (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
+        (state-add (class-name lis) (combine-class-closure (M-name (extend-class-name lis) state) (find-class-closure (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw)) state)
     (state-add (class-name lis) (find-class-closure (class-body lis) (cons '() empty-class-closure) throw) state))))
+
+(define combine-class-closure
+  (lambda (parent-closure class-closure)
+    (list (parent-class class-closure)
+    (list (list (append (field-names (field-list class-closure)) (field-names (field-list parent-closure)))
+    (append (field-values (field-list class-closure)) (field-values (field-list parent-closure)))))
+    (list (list (append (function-names (field-list class-closure)) (function-names (field-list parent-closure)))
+    (append (function-closures (field-list class-closure)) (function-closures (field-list parent-closure))))))))
+
+
+(define field-names caar)
+(define field-values cadar)
+(define function-names caar)
+(define function-closures cadar)
+
 
 (define class-body caddr)
 (define extend-stmt cadr)
@@ -146,6 +161,7 @@
                                      params
                                      state
                                      ((function-closure-env (M-name name function-state)) (add-layer state)))
+                                      
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
@@ -336,7 +352,7 @@
   (lambda (class-name state)
     (list (field-values (get-field-list class-name state)) (M-name class-name state))))
 
-(define field-values cadar)
+
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
 (define is-right-operand-null?
   (lambda (expr)
