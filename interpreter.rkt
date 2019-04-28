@@ -12,12 +12,12 @@
     (funcall-value-static (string->symbol class-name) 'main
                    '()
                    (get-function-list (string->symbol class-name)
-                                      (instantiate-class-state  (parser filename)
+                                      (instantiate-class-state (parser filename)
                                                                (list empty-layer)
                                                                (lambda (state) (error 'throw "invalid throw")))) ;Need change
                    (instantiate-class-state (parser filename)
-                                                               (list empty-layer)
-                                                               (lambda (state) (error 'throw "invalid throw")))
+                                            (list empty-layer)
+                                            (lambda (state) (error 'throw "invalid throw")))
                    (lambda (state) (error 'throw "invalid throw")))))
 
 (define get-function-list
@@ -46,8 +46,16 @@
 (define add-class-closure
   (lambda (lis state throw)
     (if (pair? (extend-stmt lis))
-        (state-add (class-name lis) (find-class-closure (class-name lis) (class-body lis) (cons (extend-class-name lis) empty-class-closure) throw) state)
-    (state-add (class-name lis) (find-class-closure (class-name lis) (class-body lis) (cons '() empty-class-closure) throw) state))))
+        (state-add (class-name lis)
+                   (find-class-closure (class-name lis)
+                                       (class-body lis)
+                                       (cons (extend-class-name lis) empty-class-closure) throw)
+                   state)
+        (state-add (class-name lis)
+                   (find-class-closure (class-name lis)
+                                       (class-body lis)
+                                       (cons '() empty-class-closure) throw)
+                   state))))
 
 (define class-body caddr)
 (define extend-stmt cadr)
@@ -64,22 +72,32 @@
        (list (parent-class class-closure)
              (declare type lis (field-list class-closure) throw)
              (function-list class-closure))]
-      [(or (eq? (stmt-type lis) 'static-function) (eq? (stmt-type lis) 'function))
+      [(eq? (stmt-type lis) 'static-function)
        (list (parent-class class-closure)
              (field-list class-closure)
-             (function (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
+             (function type (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
+      [(eq? (stmt-type lis) 'function)
+       (list (parent-class class-closure)
+             (field-list class-closure)
+             ; (function type (function-name lis) (cons 'this (function-params lis)) (function-body lis) (function-list class-closure)))]
+             (function type (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
       [else
         (find-class-closure type (next-stmts lis) (find-class-closure type (first-stmt lis) class-closure throw) throw)])))
 
+(define field-names caar)
+(define field-values cadar)
+(define function-names caar)
+(define function-closures cadar)
+
 ;; function - interprets a function definition
 (define function
-  (lambda (name params body state)
-    (state-add name (make-closure params body) state)))
+  (lambda (class name params body state)
+    (state-add name (make-function-closure params body class) state)))
 
 ;; make-closure - return the closure of a function
-(define make-closure
- (lambda (params body)
-   (list params body get-function-environment)))
+(define make-function-closure
+ (lambda (params body class)
+   (list params body get-function-environment class)))
 
 ;; get-function-environment - returns a function that takes creates a function environment by appending
 ;; the state at the function call onto the function's state in scope
@@ -127,11 +145,11 @@
 (define funcall-value
   (lambda (type name params state throw)
     (call/cc (lambda (return)
-               (M-state type (function-closure-body (M-name name state))
-                        (bind-params type (function-closure-params (M-name name state))
+               (M-state type (function-closure-body (M-value type name state throw))
+                        (bind-params type (function-closure-params (M-value type name state throw))
                                      params
                                      state
-                                     ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
+                                     (add-layer (get-class-environment (M-name type state))))
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
@@ -157,6 +175,12 @@
       [(var-in-scope? name (var-list state)) state]
       [else (find-global-state name (next-layer state))])))
 
+(define get-class-environment    ; the class instance fields may not be updated
+  (lambda (closure)
+    (list
+      (list (append (function-names (function-list closure)) (field-names (field-list closure)))
+            (append (function-closures (function-list closure)) (field-values (field-list closure)))))))
+
 ;; bind-params - returns the given state with the formal parameters bound to the actual parameters
 ;; in the topmost layer, has an accumulator-style structure
 (define bind-params
@@ -167,7 +191,8 @@
       [(or (null? formal) (null? actual))
        (error 'parameters "Mismatched parameters and arguments")]
       [else
-       (bind-params (cdr formal)
+       (bind-params type
+                    (cdr formal)
                     (cdr actual)
                     current-state
                     (state-add (car formal)
@@ -226,7 +251,6 @@
     (cond
       [(null? lis)         #f]
       [(eq? (car lis) var) #t]
-      [(and (list? var) (eq? 'dot (car var))) (var-in-scope? (cadr var) lis)]
       [else                (var-in-scope? var (cdr lis))])))
 
 ;; if-else - interprets an if-else statement
@@ -313,10 +337,10 @@
     (cond
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
-      [(eq? (stmt-type expr) 'dot)  (M-value type (M-name (caddr expr) (car (M-name (cadr expr)  state))) state throw)]
       [(eq? (math-operator expr) '=) (M-value type (var-value expr) state throw)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
-      [(eq? (stmt-type expr) 'funcall)  (funcall-value type (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (stmt-type expr) 'funcall) (funcall-value type (funcall-name expr) (funcall-params expr) state throw)]
+      [(eq? (stmt-type expr) 'dot) (class-lookup (M-value type (dot-left expr) state throw) (dot-right expr))]
       [(eq? (math-operator expr) '+) (+ (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value type (left-operand expr) state throw))]
       [(eq? (math-operator expr) '-) (- (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
@@ -333,13 +357,31 @@
       [(eq? (bool-operator expr) '||) (or (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(eq? (bool-operator expr) '!) (not (M-value type (left-operand expr) state throw))])))
 
+(define dot-left cadr)
+(define dot-right caddr)
+
+(define class-lookup
+  (lambda (instance name)
+    (cond
+      [(var-in-scope? name (field-names (instance-closure-field-values instance)))
+       (M-name name (instance-closure-field-values instance))]
+      [(var-in-scope? name (function-names (function-list (instance-closure-class instance))))
+       (M-name name (function-list (instance-closure-class instance)))]
+      [else
+        (error 'M-value "Undefined field or function")])))
+
+(define is-instance?
+  (lambda (name state)
+    (cond
+      [(null? (car (M-name name state))) #f]
+      [(not (list? (caar (M-name name state)))) #f]
+      [else #t])))
 
 ;; An instance closure:list of field values + class closure
 (define make-instance-closure
   (lambda (class-name state)
     (list (get-field-list class-name state) (M-name class-name state))))
 
-(define field-values cadar)
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
 (define is-right-operand-null?
   (lambda (expr)
@@ -357,11 +399,12 @@
 (define function-closure-params car)
 (define function-closure-body cadr)
 (define function-closure-env caddr)
+(define function-closure-class cadddr)
 (define class-closure-superclass car)
 (define class-closure-field-names cadr)
 (define class-closure-methods caddr)
-(define instance-closure-class car)
-(define instance-closure-field-values cadr)
+(define instance-closure-field-values car)
+(define instance-closure-class cadr)
 
 ;; Statement interpretation
 (define stmt-type car)
