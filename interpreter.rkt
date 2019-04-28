@@ -79,8 +79,7 @@
       [(eq? (stmt-type lis) 'function)
        (list (parent-class class-closure)
              (field-list class-closure)
-             ; (function type (function-name lis) (cons 'this (function-params lis)) (function-body lis) (function-list class-closure)))]
-             (function type (function-name lis) (function-params lis) (function-body lis) (function-list class-closure)))]
+             (function type (function-name lis) (cons 'this (function-params lis)) (function-body lis) (function-list class-closure)))]
       [else
         (find-class-closure type (next-stmts lis) (find-class-closure type (first-stmt lis) class-closure throw) throw)])))
 
@@ -147,7 +146,7 @@
     (call/cc (lambda (return)
                (M-state type (function-closure-body (M-value type name state throw))
                         (bind-params type (function-closure-params (M-value type name state throw))
-                                     params
+                                     (cons (M-value type name state throw) params)
                                      state
                                      (add-layer (get-class-environment (M-name type state))))
                         return
@@ -317,7 +316,6 @@
       [(number? name)                        name]
       [(eq? name 'true)                      #t]
       [(eq? name 'false)                     #f]
-      [(and (list? name) (eq? (car name) 'dot))                     (cadr (M-name (cadr name) state))]
       [(var-in-scope? name (var-list state)) (unbox (get-value name (var-list state) (val-list state)))]
       [else                                  (M-name name (next-layer state))])))
 
@@ -340,7 +338,7 @@
       [(eq? (math-operator expr) '=) (M-value type (var-value expr) state throw)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
       [(eq? (stmt-type expr) 'funcall) (funcall-value type (funcall-name expr) (funcall-params expr) state throw)]
-      [(eq? (stmt-type expr) 'dot) (class-lookup (M-value type (dot-left expr) state throw) (dot-right expr))]
+      [(eq? (stmt-type expr) 'dot) (class-lookup (M-value type (left-operand expr) state throw) (right-operand expr))]
       [(eq? (math-operator expr) '+) (+ (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value type (left-operand expr) state throw))]
       [(eq? (math-operator expr) '-) (- (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
@@ -356,9 +354,6 @@
       [(eq? (bool-operator expr) '&&) (and (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(eq? (bool-operator expr) '||) (or (M-value type (left-operand expr) state throw) (M-value type (right-operand expr) state throw))]
       [(eq? (bool-operator expr) '!) (not (M-value type (left-operand expr) state throw))])))
-
-(define dot-left cadr)
-(define dot-right caddr)
 
 (define class-lookup
   (lambda (instance name)
