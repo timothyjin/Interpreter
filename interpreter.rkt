@@ -232,6 +232,7 @@
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
        (error 'assign-error "variable not found, out-of-scope")]
+      [(list? (var-name stmt)) (field-update (var-name stmt) (var-value stmt) state return break continue throw)]
       [(var-in-scope? (var-name stmt) (var-list state))
        (begin (set-box! (get-value (var-name stmt) (var-list state) (val-list state))
                         (M-value (var-value stmt) original-state throw))
@@ -239,6 +240,14 @@
       [else
         (cons (car state)
               (assign stmt (next-layer state) original-state return break continue throw))])))
+
+(define field-update
+  (lambda (dot-expression value state return break continue throw)
+    (begin (set-box! (get-value (right-operand dot-expression)
+                                (field-names (field-list (instance-class-closure (M-value (left-operand dot-expression) state throw))))
+                                (instance-field-values (M-value (left-operand dot-expression) state throw)))
+                     (M-value value state throw))
+              state)))
 
 ;; var-in-scope? - returns true if the given variable has been declared in the current scope,
 ;; otherwise false
@@ -356,20 +365,23 @@
 ;; An instance closure:list of field values + class closure
 (define make-instance-closure
   (lambda (class-name state)
-    (list (field-values (get-field-list class-name state)) (M-name class-name state))))
+    (list (rebox (field-values (get-field-list class-name state))) (M-name class-name state))))
+
+(define rebox
+  (lambda (lis)
+    (cond
+      [(null? lis) lis]
+      [else (cons (box (unbox (car lis))) (rebox (cdr lis)))])))
 
 (define instance-field-values car)
 (define instance-class-closure cadr)
 
+;; look up a field in the instance closure given a variable name
 (define lookup-field
   (lambda (name instance-closure)
     (unbox (get-value name (field-names (field-list (instance-class-closure instance-closure))) (instance-field-values instance-closure))))) 
 
 
-     
-(define force-to-combine
-  (lambda (instance-closure)
-    (append (field-list (cadr instance-closure)) (function-list (cadr instance-closure)))))
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
 (define is-right-operand-null?
   (lambda (expr)
