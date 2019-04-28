@@ -135,18 +135,18 @@
 
 ;; funcall - interprets a functional call statement and returns the resulting state
 (define funcall
-  (lambda (name params state throw)
-    (begin (funcall-value name params state throw) state)))
+  (lambda (dot-expression params state throw)
+    (begin (funcall-value dot-expression params state throw) state)))
 
 ;; funcall-value - interprets a functional call statement and returns the value
 (define funcall-value
-  (lambda (name params state throw)
+  (lambda (dot-expression params state throw)
     (call/cc (lambda (return)
-               (M-state (function-closure-body (M-name name state))
-                        (bind-params (function-closure-params (M-name name state))
-                                     params
+               (M-state (function-closure-body (M-value dot-expression state throw))
+                        (bind-params (cons 'this (function-closure-params (M-value dot-expression state throw)))
+                                     (cons (left-operand dot-expression) params)
                                      state
-                                     ((function-closure-env (M-name name state)) (add-layer (find-global-state name state))))
+                                     ((function-closure-env (M-value dot-expression state throw)) (add-layer state)))
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
@@ -328,6 +328,7 @@
       [(null? expr) (error 'M-value "undefined expression")]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state throw)]
+      [(eq? (stmt-type expr) 'dot) (M-value (right-operand expr) (force-to-combine (M-value (left-operand expr) state throw)) throw)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
       [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state throw)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state throw) (M-value (right-operand expr) state throw))]
@@ -352,7 +353,9 @@
   (lambda (class-name state)
     (list (field-values (get-field-list class-name state)) (M-name class-name state))))
 
-
+(define force-to-combine
+  (lambda (instance-closure)
+    (append (field-list (cadr instance-closure)) (function-list (cadr instance-closure)))))
 ;; is-right-operand-null? - returns true if the given expression uses a unary operator, otherwise false
 (define is-right-operand-null?
   (lambda (expr)
