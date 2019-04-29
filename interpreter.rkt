@@ -140,9 +140,11 @@
       [(eq? (stmt-type lis) 'catch)    (catch lis state current-type return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state current-type return break continue throw)]
       [(eq? (stmt-type lis) 'throw)    (throw (state-add 'error (M-value (return-value lis) state current-type throw) (add-layer state)))]
-      [(eq? (stmt-type lis) 'function) (function current-type(function-name lis) (function-params lis) (function-body lis) state)]
-      [(and (list? (stmt-type lis)) (eq? (stmt-type lis) 'funcall))  (funcall (cons 'dot (cons 'this (list (funcall-name lis)))) (funcall-params lis) state current-type throw)]
-      [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state current-type throw)]
+      [(eq? (stmt-type lis) 'function) (function current-type (function-name lis) (function-params lis) (function-body lis) state)]
+
+      [(and (eq? (stmt-type lis) 'funcall) (list? (funcall-name lis))) (funcall (funcall-name lis) (funcall-params lis) state current-type throw)]
+      [(and (eq? (stmt-type lis) 'funcall) (eq? 'error (M-name (funcall-name lis) state)))  (funcall (cons 'dot (cons 'this (list (funcall-name lis)))) (funcall-params lis) state current-type throw)]
+      [(eq? (stmt-type lis) 'funcall) (funcall (funcall-name lis) (funcall-params lis) state current-type throw)]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
                                                          current-type return break continue throw)
@@ -158,7 +160,7 @@
   (lambda (dot-expression params state current-type throw)
     (call/cc (lambda (return)
                (cond
-                 ((and (list? dot-expression) (eq? 'super (left-operand dot-expression)))
+                 [(and (list? dot-expression) (eq? 'super (left-operand dot-expression)))
                    (M-state (function-closure-body (super-look-up-function (right-operand dot-expression) state current-type throw))
                         (bind-params (function-closure-params (super-look-up-function (right-operand dot-expression) state current-type throw))
                                      (cons 'this params)
@@ -169,9 +171,9 @@
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
-                        throw))
+                        throw)]
                
-               ((list? dot-expression) (M-state (function-closure-body (look-up-function dot-expression state current-type throw))
+               [(list? dot-expression) (M-state (function-closure-body (look-up-function dot-expression state current-type throw))
                         (bind-params (function-closure-params (look-up-function dot-expression state current-type throw))
                                      (cons (left-operand dot-expression) params)
                                      state
@@ -181,8 +183,20 @@
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
-                        throw))
-                      )))))
+                        throw)]
+               
+               [else (M-state (function-closure-body (M-name dot-expression state))
+                              (bind-params (function-closure-params (M-name dot-expression state))
+                                           params
+                                           state
+                                           ((function-closure-env (M-name dot-expression state)) (add-layer state))
+                                           current-type)
+                              current-type
+                              return 
+                              (lambda (state) (error 'break "invalid break"))
+                              (lambda (state) (error 'continue "invalid continue"))
+                              throw)]
+               )))))
 
 ;; look up the function in the instance closure, return the function closure
 (define look-up-function

@@ -1,49 +1,61 @@
-class List {
-  var val;
-  var next;
+class A {
+  var count = 0;
 
-  function getNext() {
-    return next;
-  }
-
-  function makeList(x) {
-    if (x == 0)
-      next = 0;
-    else {
-      next = new List();
-      next.setVal(getVal()+1);
-      next.makeList(x-1);
+  function subtract(a, b) {
+    if (a < b) {
+       throw b - a;
     }
+    else
+       return a - b;
+  }
+}
+
+class B extends A {
+  function divide(a, b) {
+    if (b == 0)
+      throw a;
+    else
+      return a / b;
   }
 
-  function setVal(x) {
-    val = x;
-  }
-
-  function getVal() {
-    return val;
-  }
-
-  function expand() {
-    var p = this;
-    while (p != 0) {
-      function exp(a) {
-        while (a != 0) {
-          this.setVal(this.getVal() + p.getVal() * a.getVal());
-          a = a.getNext();
-        }
+  function reduce(a, b) {
+    while (a > 1 || a < -1) {
+      try {
+        a = divide(a, b);
+        if (a == 2)
+          break;
       }
-      exp(p);
-      p = p.getNext();
+      catch (e) {
+        return subtract(a, b); 
+      }
+      finally {
+        count = count + 1;
+      }
     }
+    return a;
   }
+}
 
-
+class C {
   static function main() {
-    var l = new List();
-    l.val = 1;
-    l.makeList(5);
-    l.expand();
-    return l.getVal();
+    var x;
+    var b;
+
+    b = new B();
+
+    try {
+      x = b.reduce(10, 5);
+      x = x + b.reduce(81, 3);
+      x = x + b.reduce(5, 0);
+      x = x + b.reduce(-2, 0);
+      x = x + b.reduce(12, 4);
+    }
+    catch (a) {
+      x = x * a;
+    }
+    finally {
+      x = -1 * x;
+    }
+    return x - b.count * 100;
   }
 }
