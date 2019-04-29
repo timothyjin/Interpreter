@@ -7,9 +7,9 @@ class A {
   }
 
   function getX() {
-    return x;
+    return this.x;
   }
-	
+
   function add(a) {
     return a.getX() + this.getX();
   }
@@ -19,6 +19,6 @@ class A {
     var a2 = new A();
     a1.setX(50);
     a2.setX(4);
-    return a1.getX();
-}
+    return a1.add(a2);
+  }
 }
