@@ -66,8 +66,8 @@
     (list (parent-class class-closure)
           (list (list (append (field-names (field-list class-closure)) (field-names (field-list parent-closure)))
                       (append (field-values (field-list class-closure)) (field-values (field-list parent-closure)))))
-          (list (list (append (function-names (field-list class-closure)) (function-names (field-list parent-closure)))
-                      (append (function-closures (field-list class-closure)) (function-closures (field-list parent-closure))))))))
+          (list (list (append (function-names (function-list class-closure)) (function-names (function-list parent-closure)))
+                      (append (function-closures (function-list class-closure)) (function-closures (function-list parent-closure))))))))
 
 (define field-names caar)
 (define field-values cadar)
@@ -140,7 +140,7 @@
       [(eq? (stmt-type lis) 'catch)    (catch lis state current-type return break continue throw)]
       [(eq? (stmt-type lis) 'finally)  (finally lis state current-type return break continue throw)]
       [(eq? (stmt-type lis) 'throw)    (throw (state-add 'error (M-value (return-value lis) state throw) (add-layer state)))]
-      [(eq? (stmt-type lis) 'function) (function (function-name lis) (function-params lis) (function-body lis) state)]
+      [(eq? (stmt-type lis) 'function) (function current-type(function-name lis) (function-params lis) (function-body lis) state)]
       [(eq? (stmt-type lis) 'funcall)  (funcall (funcall-name lis) (funcall-params lis) state current-type throw)]
       [else                            (M-state (next-stmts lis)
                                                 (M-state (first-stmt lis) state
@@ -154,8 +154,21 @@
 
 ;; funcall-value - interprets a functional call statement and returns the value
 (define funcall-value
-  (lambda (dot-expression params  state current-type throw)
+  (lambda (dot-expression params state current-type throw)
     (call/cc (lambda (return)
+               (if (eq? 'super (left-operand dot-expression))
+                   (M-state (function-closure-body (super-look-up-function (right-operand dot-expression) state current-type throw))
+                        (bind-params (function-closure-params (super-look-up-function (right-operand dot-expression) state current-type throw))
+                                     (cons 'this params)
+                                     state
+                                     ((function-closure-env (super-look-up-function (right-operand dot-expression) state current-type throw)) (add-layer state))
+                                     current-type)
+                        (function-closure-class (super-look-up-function (right-operand dot-expression) state current-type throw))
+                        return
+                        (lambda (state) (error 'break "invalid break"))
+                        (lambda (state) (error 'continue "invalid continue"))
+                        throw)
+               
                (M-state (function-closure-body (look-up-function dot-expression state current-type throw))
                         (bind-params (function-closure-params (look-up-function dot-expression state current-type throw))
                                      (cons (left-operand dot-expression) params)
@@ -166,13 +179,16 @@
                         return
                         (lambda (state) (error 'break "invalid break"))
                         (lambda (state) (error 'continue "invalid continue"))
-                        throw)))))
+                        throw))))))
 
 ;; look up the function in the instance closure, return the function closure
 (define look-up-function
   (lambda (dot-expression state current-type throw)
     (M-value (right-operand dot-expression) (function-list (instance-class-closure (M-value (left-operand dot-expression) state current-type throw))) current-type throw)))
 
+(define super-look-up-function
+  (lambda (name state current-type throw)
+    (M-value name (function-list (M-value (parent-class (M-value current-type state current-type throw)) state current-type throw)) current-type throw)))
 ;; funcall-value-static - interprets a functional call statement and returns the value
 (define funcall-value-static
   (lambda (name params function-state state current-type throw)
@@ -250,7 +266,7 @@
       [(null? stmt)
        (error 'assign-interpret "invalid assign statement")]
       [(null? state)
-       (field-update (cons 'dot (cons 'this (var-name stmt))) (var-value stmt) original-state current-type return break continue throw)]
+       (field-update (cons 'dot (cons 'this (list (var-name stmt)))) (var-value stmt) original-state current-type return break continue throw)]
        ;(error 'assign-error "variable not found, out-of-scope")]
       [(list? (var-name stmt)) (field-update (var-name stmt) (var-value stmt) state current-type return break continue throw)]
       [(var-in-scope? (var-name stmt) (var-list state))
@@ -308,7 +324,7 @@
            (while stmt (call/cc (lambda (continue)
                                   (M-state (statement stmt)
                                            (M-state (condition stmt) state current-type return break continue throw)
-                                           return break continue throw))) current-type return break continue throw)
+                                           current-type return break continue throw))) current-type return break continue throw)
            (M-state (condition stmt) state
                     current-type return break continue throw))))
 
@@ -370,9 +386,11 @@
       [(and (not (list? expr)) (eq? 'error (M-name expr state))) (lookup-field expr (M-name 'this state) state current-type)]
       [(not (list? expr)) (M-name expr state)]
       [(eq? (math-operator expr) '=) (M-value (var-value expr) state current-type throw)]
-      [(eq? (stmt-type expr) 'dot) (lookup-field (right-operand expr) (M-value (left-operand expr) state current-type throw) state current-type)]
+      [(and (eq? (stmt-type expr) 'dot) (eq? (left-operand expr) 'this)) (lookup-field (right-operand expr) (M-value (left-operand expr) state current-type throw) state current-type)]
+      [(eq? (stmt-type expr) 'dot) (dot-lookup-field (right-operand expr) (M-value (left-operand expr) state current-type throw) state)]
       [(eq? (stmt-type expr) 'new) (make-instance-closure (var-name expr) state)]
-      [(eq? (stmt-type expr) 'funcall)  (funcall-value (funcall-name expr) (funcall-params expr) state current-type throw)]
+      [(and (eq? (stmt-type expr) 'funcall) (list? (funcall-name expr)))  (funcall-value (funcall-name expr) (funcall-params expr) state current-type throw)]
+      [(and (eq? (stmt-type expr) 'funcall))  (funcall-value (cons 'dot (cons 'this (list (funcall-name expr)))) (funcall-params expr) state current-type throw)]
       [(eq? (math-operator expr) '+) (+ (M-value (left-operand expr) state current-type throw) (M-value (right-operand expr) state current-type throw))]
       [(and (eq? (math-operator expr) '-) (is-right-operand-null? expr)) (* -1 (M-value (left-operand expr) state current-type throw))]
       [(eq? (math-operator expr) '-) (- (M-value (left-operand expr) state current-type throw) (M-value (right-operand expr) state current-type throw))]
@@ -409,8 +427,11 @@
   (lambda (name instance-closure state current-type)
     (unbox (reverse-find name (field-names (field-list (M-name current-type state))) (reverse (instance-field-values instance-closure)) #f))))
 
-;;helper function - find the values using the right index in the reversed list - solve polymorphism
+(define dot-lookup-field
+  (lambda (name instance-closure state)
+    (unbox (reverse-find name (field-names (field-list (instance-class-closure instance-closure))) (reverse (instance-field-values instance-closure)) #f))))
 
+;;helper function - find the values using the right index in the reversed list - solve polymorphism
 (define reverse-find
   (lambda (name variable-list reversed-value-list trigger)
     (cond

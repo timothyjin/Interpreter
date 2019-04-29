@@ -1,24 +1,30 @@
-class A {
 
-  var x = 100;
+class List {
+  var val;
+  var next;
 
-  function setX(x) {
-    this.x = x;
+  function getNext() {
+    return next;
   }
 
-  function getX() {
-    return this.x;
+  function setNext(x) {
+    if (x == 0)
+      next = 0;
+    else {
+      next = new List();
+      next.setVal(val+1);
+      next.setNext(x-1);
+    }
   }
 
-  function add(a) {
-    return a.getX() + this.getX();
+  function setVal(x) {
+    val = x;
   }
 
   static function main() {
-    var a1 = new A();
-    var a2 = new A();
-    a1.setX(50);
-    a2.setX(4);
-    return a1.add(a2);
+    var l = new List();
+    l.setVal(10);
+    l.setNext(5);
+    return l.getNext().getNext().getNext().getNext().getNext().val;
   }
 }
